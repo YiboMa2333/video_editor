@@ -64,7 +64,42 @@ Expected result:
 1. Vite dev server starts.
 2. Electron window opens with the desktop UI.
 
-## 5. Common Issues
+## 5. If App Does Not Open: Reset Old Process/Terminal
+
+Use these commands in PowerShell.
+
+Check if old Node/Electron processes are still running:
+
+```powershell
+Get-Process node,electron -ErrorAction SilentlyContinue
+```
+
+Kill old Node/Electron processes:
+
+```powershell
+Stop-Process -Name node,electron -Force -ErrorAction SilentlyContinue
+```
+
+Optional: check if common dev ports are occupied:
+
+```powershell
+Get-NetTCPConnection -LocalPort 5173,5174 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess
+```
+
+If needed, kill by PID (replace 12345):
+
+```powershell
+Stop-Process -Id 12345 -Force
+```
+
+Start a fresh run in a new terminal:
+
+```powershell
+cd "D:\AI_video_editor_project\ai-video-editor"
+corepack pnpm dev:desktop
+```
+
+## 6. Common Issues
 
 If `pnpm` command is not recognized:
 
@@ -78,7 +113,7 @@ corepack pnpm approve-builds --all
 corepack pnpm rebuild electron esbuild
 ```
 
-## 6. Main Repo Folders
+## 7. Main Repo Folders
 
 1. `apps/desktop`: Electron desktop app
 2. `docs`: architecture and planning docs
