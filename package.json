@@ -1,0 +1,27 @@
+{
+  "name": "ai-video-editor",
+  "version": "1.0.0",
+  "description": "A project for an AI-powered video editing application.",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"npm run start:desktop\" \"npm run start:api\"",
+    "start:desktop": "cd apps/desktop && npm start",
+    "start:api": "cd apps/api && uvicorn app.main:app --reload",
+    "build": "npm run build:desktop && npm run build:api",
+    "build:desktop": "cd apps/desktop && npm run build",
+    "build:api": "cd apps/api && python -m build"
+  },
+  "dependencies": {
+    "concurrently": "^6.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^4.0.0",
+    "eslint": "^7.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/ai-video-editor.git"
+  },
+  "author": "YOUR_NAME",
+  "license": "MIT"
+}
