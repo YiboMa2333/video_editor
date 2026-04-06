@@ -1,40 +1,90 @@
 # AI Video Editor
 
-Welcome to the AI Video Editor project! This project aims to create a powerful and user-friendly video editing application that leverages artificial intelligence to enhance the editing experience.
+Desktop AI video editor (Electron + React + TypeScript).
 
-## Project Structure
+## 1. Install Requirements (Windows)
 
-The project is organized into several directories and files, each serving a specific purpose:
+Install these tools first:
 
-- **.github**: Contains GitHub-specific configurations, including workflows for continuous integration and deployment.
-- **apps**: This directory holds application-specific code for the video editor.
-- **packages**: Contains shared packages or libraries that can be used across different applications within the project.
-- **docs**: Documentation files that provide insights into the project's architecture, roadmap, and data models.
-  - **architecture.md**: Outlines the overall architecture of the project.
-  - **roadmap.md**: Details the planned features and milestones for the project.
-  - **timeline-data-model.md**: Describes the data model used for the timeline in the video editor.
-- **assets**: A directory for static assets such as images, videos, and other media files.
-- **scripts**: Contains scripts related to project setup, build processes, or other automation tasks.
-- **runtime**: Holds files related to the runtime environment of the application.
+1. Node.js LTS (includes npm)
+2. Git
+3. Corepack (included with modern Node.js)
 
-## Getting Started
+Check versions in PowerShell:
 
-To get started with the project, clone the repository and install the necessary dependencies:
-
-```bash
-git clone https://github.com/YOUR_USERNAME/ai-video-editor.git
-cd ai-video-editor
-pnpm install
+```powershell
+node --version
+corepack --version
+git --version
 ```
 
-## Contributing
+## 2. Folder Arrangement
 
-Contributions are welcome! Please feel free to submit a pull request or open an issue to discuss potential improvements or features.
+Use this layout:
+
+```text
+D:\AI_video_editor_project\
+  ai-video-editor\
+  _runtime_cache\
+```
+
+Notes:
+
+1. Keep the repository in `D:\AI_video_editor_project\ai-video-editor`.
+2. Keep runtime/downloaded artifacts outside the repo in `D:\AI_video_editor_project\_runtime_cache`.
+3. This repository already contains `.npmrc` that points pnpm store data to `_runtime_cache`.
+
+## 3. First-Time Setup
+
+Run from PowerShell:
+
+```powershell
+cd "D:\AI_video_editor_project\ai-video-editor"
+corepack pnpm install
+corepack pnpm approve-builds --all
+corepack pnpm rebuild electron esbuild
+```
+
+Why this is required:
+
+1. pnpm v10 blocks dependency build scripts by default.
+2. Electron needs postinstall to download `electron.exe`.
+
+## 4. Open the App
+
+Start desktop app:
+
+```powershell
+cd "D:\AI_video_editor_project\ai-video-editor"
+corepack pnpm dev:desktop
+```
+
+Expected result:
+
+1. Vite dev server starts.
+2. Electron window opens with the desktop UI.
+
+## 5. Common Issues
+
+If `pnpm` command is not recognized:
+
+1. Use `corepack pnpm` instead of `pnpm`.
+
+If Electron says install failed:
+
+```powershell
+cd "D:\AI_video_editor_project\ai-video-editor"
+corepack pnpm approve-builds --all
+corepack pnpm rebuild electron esbuild
+```
+
+## 6. Main Repo Folders
+
+1. `apps/desktop`: Electron desktop app
+2. `docs`: architecture and planning docs
+3. `packages`: shared workspace packages
+4. `assets`: static resources
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for more details.
-
-## Acknowledgments
-
-Thank you for your interest in the AI Video Editor project! We hope you find it useful and inspiring.
+MIT
