@@ -5,12 +5,27 @@ export default function MediaBin() {
   const media = useProjectStore((s) => s.project.media);
   const selectedMediaId = useProjectStore((s) => s.selectedMediaId);
   const selectMedia = useProjectStore((s) => s.selectMedia);
+  const clearAllImportedMedia = useProjectStore((s) => s.clearAllImportedMedia);
+
+  const onDeleteAll = () => {
+    const shouldDelete = window.confirm("Delete all imported media from this project?");
+    if (!shouldDelete) {
+      return;
+    }
+
+    clearAllImportedMedia();
+  };
 
   return (
     <section className="panel">
       <div className="panel-header">
         <h2>Media Bin</h2>
-        <ImportButton />
+        <div className="panel-actions">
+          <button className="button-danger" onClick={onDeleteAll} disabled={media.length === 0}>
+            Delete All
+          </button>
+          <ImportButton />
+        </div>
       </div>
 
       {media.length === 0 ? (

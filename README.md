@@ -25,14 +25,22 @@ Use this layout:
 ```text
 D:\AI_video_editor_project\
   ai-video-editor\
+  converted-videos\
   _runtime_cache\
+
+D:\video_editor_cache\
+  @ai-video-editor\
+    desktop\
 ```
 
 Notes:
 
 1. Keep the repository in `D:\AI_video_editor_project\ai-video-editor`.
 2. Keep runtime/downloaded artifacts outside the repo in `D:\AI_video_editor_project\_runtime_cache`.
-3. This repository already contains `.npmrc` that points pnpm store data to `_runtime_cache`.
+3. Electron app cache and imported-file working data are stored in `D:\video_editor_cache\@ai-video-editor\desktop`.
+4. Compatible converted videos are written to `D:\AI_video_editor_project\converted-videos`.
+5. This repository already contains `.npmrc` that points pnpm store data to `_runtime_cache`.
+6. If the moved cache folder is read-only, the desktop app automatically falls back to `D:\AI_video_editor_project\_runtime_cache\desktop-user-data` so the app can still start.
 
 ## 3. First-Time Setup
 
@@ -79,6 +87,8 @@ Kill old Node/Electron processes:
 ```powershell
 Stop-Process -Name node,electron -Force -ErrorAction SilentlyContinue
 ```
+
+If you want to close the old VS Code terminal tab too, use the terminal trash-can button after stopping the process.
 
 Optional: check if common dev ports are occupied:
 

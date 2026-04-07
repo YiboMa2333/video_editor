@@ -24,10 +24,28 @@
 .video {
   flex: 1;
   width: 100%;
-  height: auto;
-  max-height: calc(100% - 80px);
+  height: calc(100% - 92px);
   background-color: #000;
   display: block;
+  object-fit: contain;
+}
+
+.errorBanner {
+  margin: 8px 10px 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #4a1e1e;
+  color: #ffd2d2;
+  font-size: 12px;
+}
+
+.statusBanner {
+  margin: 8px 10px 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #1f3555;
+  color: #d8e8ff;
+  font-size: 12px;
 }
 
 .placeholder {

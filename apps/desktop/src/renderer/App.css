@@ -49,6 +49,56 @@ body {
   font-size: 14px;
 }
 
+.project-name-row {
+  display: flex;
+  gap: 8px;
+}
+
+.project-name-input {
+  flex: 1;
+  background: #161616;
+  border: 1px solid #3e3e42;
+  border-radius: 6px;
+  color: #e8e8e8;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.project-name-input:focus {
+  outline: 1px solid #2d6cdf;
+  border-color: #2d6cdf;
+}
+
+.project-message {
+  margin: 8px 0 0;
+  color: #47d16c;
+  font-size: 12px;
+}
+
+.project-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.project-list-item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #161616;
+  border: 1px solid #3e3e42;
+  color: #e8e8e8;
+  padding: 10px 12px;
+}
+
+.project-list-item.active {
+  border-color: #2d6cdf;
+  background: #1c2c46;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -59,6 +109,11 @@ body {
 .panel-header h2 {
   margin: 0;
   font-size: 14px;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .media-list {
@@ -110,4 +165,17 @@ button:hover {
 
 button:active {
   filter: brightness(0.95);
+}
+
+.button-danger {
+  background: #8f1d1d;
+}
+
+.button-danger:hover {
+  filter: brightness(1.1);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
