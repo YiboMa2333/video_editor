@@ -1,6 +1,8 @@
 node_modules/
 apps/desktop/node_modules/
 apps/desktop/out/
+apps/converted-videos/
+apps/_runtime_cache/
 .pnpm-store/
 .pnpm-debug.log*
 *.log

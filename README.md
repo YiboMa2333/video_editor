@@ -33,6 +33,31 @@ D:\video_editor_cache\
     desktop\
 ```
 
+Required before running:
+
+1. `D:\AI_video_editor_project\ai-video-editor`
+  - This is the GitHub-downloaded repository folder.
+2. `D:\AI_video_editor_project\converted-videos`
+  - Stores converted preview/output videos used for Chromium-safe playback.
+3. `D:\AI_video_editor_project\_runtime_cache`
+  - Stores pnpm cache/store data and fallback desktop app user data.
+
+Optional but recommended:
+
+1. `D:\video_editor_cache\@ai-video-editor\desktop`
+  - Preferred Electron user-data/cache location.
+  - If this folder does not exist, the app can create it.
+  - If this folder exists but is read-only, the app falls back to `D:\AI_video_editor_project\_runtime_cache\desktop-user-data`.
+
+What is created automatically on first run:
+
+1. `D:\AI_video_editor_project\converted-videos`
+  - If missing, the app creates it before writing converted files.
+2. `D:\AI_video_editor_project\_runtime_cache\desktop-user-data`
+  - Created automatically only when the preferred `D:\video_editor_cache\@ai-video-editor\desktop` folder is unavailable or not writable.
+3. `D:\video_editor_cache\@ai-video-editor\desktop`
+  - Can be created automatically if Windows permissions allow it.
+
 Notes:
 
 1. Keep the repository in `D:\AI_video_editor_project\ai-video-editor`.
@@ -41,6 +66,12 @@ Notes:
 4. Compatible converted videos are written to `D:\AI_video_editor_project\converted-videos`.
 5. This repository already contains `.npmrc` that points pnpm store data to `_runtime_cache`.
 6. If the moved cache folder is read-only, the desktop app automatically falls back to `D:\AI_video_editor_project\_runtime_cache\desktop-user-data` so the app can still start.
+
+You do not need to commit or manually copy any runtime-generated files such as:
+
+1. Converted preview videos inside `converted-videos`
+2. Electron cache/user-data files
+3. pnpm store/cache files in `_runtime_cache`
 
 ## 3. First-Time Setup
 
