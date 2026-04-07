@@ -9,6 +9,7 @@ export default function App() {
   const [backend, setBackend] = useState<"checking" | "online" | "offline">("checking");
   const [projectDraftName, setProjectDraftName] = useState("");
   const [projectMessage, setProjectMessage] = useState<string | null>(null);
+  const [isResettingApp, setIsResettingApp] = useState(false);
   const projectName = useProjectStore((s) => s.project.name);
   const projects = useProjectStore((s) => s.projects);
   const currentProjectId = useProjectStore((s) => s.currentProjectId);
@@ -17,6 +18,7 @@ export default function App() {
   const renameProject = useProjectStore((s) => s.renameProject);
   const createProject = useProjectStore((s) => s.createProject);
   const switchProject = useProjectStore((s) => s.switchProject);
+  const resetProjectState = useProjectStore((s) => s.resetProjectState);
 
   const selectedMedia = media.find((m) => m.id === selectedMediaId);
 
@@ -51,6 +53,39 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [projectMessage]);
 
+  const onCleanCache = async () => {
+    const shouldReset = window.confirm(
+      "This will remove converted videos and app cache, reset local project data, and reload the app. Continue?"
+    );
+    if (!shouldReset) {
+      return;
+    }
+
+    setIsResettingApp(true);
+
+    try {
+      const report = await window.desktopAPI.clearCaches();
+      resetProjectState();
+      localStorage.removeItem("ai-video-editor-projects");
+
+      if (report.failedPaths.length > 0) {
+        const failedList = report.failedPaths
+          .slice(0, 3)
+          .map((item) => `${item.path}: ${item.error}`)
+          .join("\n");
+        alert(
+          `Cache reset completed with ${report.failedPaths.length} warning(s).\n${failedList}`
+        );
+      }
+
+      window.location.reload();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to clean caches.");
+    } finally {
+      setIsResettingApp(false);
+    }
+  };
+
   return (
     <main className="app">
       <header className="topbar">
@@ -80,6 +115,9 @@ export default function App() {
             }}
           >
             Rename
+          </button>
+          <button className="button-danger" onClick={onCleanCache} disabled={isResettingApp}>
+            {isResettingApp ? "Cleaning..." : "Clean Cache"}
           </button>
         </div>
         {projectMessage ? <p className="project-message">{projectMessage}</p> : null}

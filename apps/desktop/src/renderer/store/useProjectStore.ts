@@ -22,6 +22,7 @@ interface ProjectState {
   addTrack: (track: Track) => void;
   updateClip: (trackId: string, clipId: string, patch: Partial<Clip>) => void;
   renameProject: (name: string) => void;
+  resetProjectState: () => void;
 }
 
 const now = () => new Date().toISOString();
@@ -170,6 +171,18 @@ export const useProjectStore = create<ProjectState>()(
             updatedAt: now(),
           })),
         })),
+
+      resetProjectState: () => {
+        const freshProject = buildProject();
+        set({
+          projects: [freshProject],
+          currentProjectId: freshProject.id,
+          project: freshProject,
+          selectedClipId: null,
+          selectedTrackId: null,
+          selectedMediaId: null,
+        });
+      },
     }),
     {
       name: "ai-video-editor-projects",

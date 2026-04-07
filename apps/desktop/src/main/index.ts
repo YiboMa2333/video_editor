@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, Menu, net, protocol } from "electr
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -71,6 +71,12 @@ const defaultCacheRoot =
     : path.join(projectRoot, ".ai-video-editor-cache");
 const fallbackCacheRoot = path.join(projectRoot, "_runtime_cache", "desktop-user-data");
 const convertedVideoDir = path.join(projectRoot, "converted-videos");
+const legacyConvertedVideoDir = path.join(repoRoot, "apps", "converted-videos");
+
+type ClearCacheResult = {
+  clearedDirectories: string[];
+  failedPaths: Array<{ path: string; error: string }>;
+};
 
 function resolveUserDataPath() {
   const requestedPath = process.env.AI_VIDEO_EDITOR_CACHE_DIR ?? defaultCacheRoot;
@@ -212,6 +218,51 @@ async function createPreviewFromBuffer(fileName: string, bytes: Uint8Array) {
   return createPreviewAsset(sourcePath, fileName);
 }
 
+async function clearDirectoryContents(directoryPath: string, result: ClearCacheResult) {
+  try {
+    await mkdir(directoryPath, { recursive: true });
+    const entries = await readdir(directoryPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const targetPath = path.join(directoryPath, entry.name);
+      try {
+        await rm(targetPath, {
+          recursive: true,
+          force: true,
+          maxRetries: 2,
+          retryDelay: 80,
+        });
+      } catch (error) {
+        result.failedPaths.push({
+          path: targetPath,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    result.clearedDirectories.push(directoryPath);
+  } catch (error) {
+    result.failedPaths.push({
+      path: directoryPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function clearAppCaches(): Promise<ClearCacheResult> {
+  const result: ClearCacheResult = {
+    clearedDirectories: [],
+    failedPaths: [],
+  };
+
+  await clearDirectoryContents(convertedVideoDir, result);
+  await clearDirectoryContents(legacyConvertedVideoDir, result);
+  await clearDirectoryContents(path.join(app.getPath("userData"), "import-cache"), result);
+  await clearDirectoryContents(path.join(app.getPath("userData"), "preview-cache"), result);
+
+  return result;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -295,6 +346,10 @@ app.whenReady().then(() => {
       return createPreviewFromBuffer(payload.fileName, payload.bytes);
     }
   );
+
+  ipcMain.handle("app:clearCaches", async () => {
+    return clearAppCaches();
+  });
 
   createMenu();
   createWindow();

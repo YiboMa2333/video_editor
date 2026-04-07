@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld("desktopAPI", {
   createPreview: (filePath: string) => ipcRenderer.invoke("media:createPreview", filePath) as Promise<string>,
   createPreviewFromBuffer: (fileName: string, bytes: Uint8Array) =>
     ipcRenderer.invoke("media:createPreviewFromBuffer", { fileName, bytes }) as Promise<string>,
+  clearCaches: () =>
+    ipcRenderer.invoke("app:clearCaches") as Promise<{
+      clearedDirectories: string[];
+      failedPaths: Array<{ path: string; error: string }>;
+    }>,
 });
 
 contextBridge.exposeInMainWorld("electron", {
