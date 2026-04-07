@@ -1,0 +1,136 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.header {
+  padding: 12px;
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #d4d4d4;
+}
+
+.video {
+  flex: 1;
+  width: 100%;
+  height: auto;
+  max-height: calc(100% - 80px);
+  background-color: #000;
+  display: block;
+}
+
+.placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #858585;
+  font-size: 14px;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background-color: #252526;
+  border-top: 1px solid #3e3e42;
+}
+
+.playButton {
+  padding: 8px 12px;
+  background-color: #0e639c;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.playButton:hover {
+  background-color: #1177bb;
+}
+
+.playButton:active {
+  background-color: #094b7a;
+}
+
+.timeDisplay {
+  font-size: 12px;
+  color: #858585;
+  text-align: center;
+}
+
+.seekBar {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  background: linear-gradient(to right, #0e639c 0%, #0e639c var(--fill), #3e3e42 var(--fill), #3e3e42 100%);
+}
+
+.seekBar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #0e639c;
+  cursor: pointer;
+  border: 1px solid #ffffff;
+}
+
+.seekBar::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #0e639c;
+  cursor: pointer;
+  border: 1px solid #ffffff;
+}
+
+.volumeControl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.volumeSlider {
+  flex: 1;
+  max-width: 120px;
+  height: 4px;
+  cursor: pointer;
+  background: linear-gradient(to right, #3e3e42 0%, #3e3e42 100%);
+}
+
+.volumeSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #0e639c;
+  cursor: pointer;
+  border: 1px solid #ffffff;
+}
+
+.volumeSlider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #0e639c;
+  cursor: pointer;
+  border: 1px solid #ffffff;
+}

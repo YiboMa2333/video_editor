@@ -7,9 +7,11 @@ interface ProjectState {
   project: Project;
   selectedClipId: string | null;
   selectedTrackId: string | null;
+  selectedMediaId: string | null;
   setProject: (project: Project) => void;
   selectClip: (clipId: string | null) => void;
   selectTrack: (trackId: string | null) => void;
+  selectMedia: (mediaId: string | null) => void;
   addMedia: (item: MediaItem) => void;
   addTrack: (track: Track) => void;
   updateClip: (trackId: string, clipId: string, patch: Partial<Clip>) => void;
@@ -33,10 +35,12 @@ export const useProjectStore = create<ProjectState>()((set) => ({
   project: initialProject,
   selectedClipId: null,
   selectedTrackId: null,
+  selectedMediaId: null,
 
   setProject: (project) => set({ project }),
   selectClip: (selectedClipId) => set({ selectedClipId }),
   selectTrack: (selectedTrackId) => set({ selectedTrackId }),
+  selectMedia: (selectedMediaId) => set({ selectedMediaId }),
 
   addMedia: (item) =>
     set((state) => ({
