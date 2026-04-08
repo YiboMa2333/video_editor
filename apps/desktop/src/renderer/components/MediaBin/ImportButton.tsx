@@ -1,15 +1,17 @@
-import { createBrowserMediaStub, createLocalMediaStub } from "../../services/api";
+import { createBrowserMediaStub, createLocalMediaStub, enrichMediaMetadata } from "../../services/api";
 import { useProjectStore } from "../../store/useProjectStore";
 import { useRef, useState } from "react";
 
 export default function ImportButton() {
   const addMedia = useProjectStore((s) => s.addMedia);
+  const addClipFromMedia = useProjectStore((s) => s.addClipFromMedia);
   const selectMedia = useProjectStore((s) => s.selectMedia);
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const importItem = (item: ReturnType<typeof createLocalMediaStub>) => {
     addMedia(item);
+    addClipFromMedia(item.id);
     selectMedia(item.id);
   };
 
@@ -32,7 +34,8 @@ export default function ImportButton() {
         };
       }
 
-      importItem(item);
+      const enrichedItem = await enrichMediaMetadata(item);
+      importItem(enrichedItem);
     } catch (error) {
       console.error("Import failed:", error);
       alert(error instanceof Error ? error.message : "Failed to import media.");
@@ -51,7 +54,8 @@ export default function ImportButton() {
           return;
         }
 
-        importItem(createLocalMediaStub(filePath));
+        const enrichedItem = await enrichMediaMetadata(createLocalMediaStub(filePath));
+        importItem(enrichedItem);
         return;
       } finally {
         setIsLoading(false);

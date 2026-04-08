@@ -22,9 +22,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
   const directSource = src ? resolveMediaSource(src) : undefined;
 
   useEffect(() => {
-    setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
+    setIsPlaying(false);
     setPlaybackError(null);
     setPlaybackSource(undefined);
     setHasTriedPreviewFallback(false);
@@ -32,8 +32,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
   }, [src]);
 
   useEffect(() => {
-    let cancelled = false;
-
     const prepareSource = async () => {
       if (!src) {
         setPlaybackSource(undefined);
@@ -44,10 +42,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
     };
 
     prepareSource();
-
-    return () => {
-      cancelled = true;
-    };
   }, [src]);
 
   const attemptPreviewFallback = async () => {
@@ -133,18 +127,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
       if (isPlaying) {
         videoRef.current.pause();
       } else {
-        videoRef.current.play();
+        void videoRef.current.play();
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
   // Handle seeking
   const handleSeek = (time: number) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = time;
-      setCurrentTime(time);
+    const element = videoRef.current;
+    if (!element) {
+      return;
     }
+
+    const safeDuration = Number.isFinite(element.duration) && element.duration > 0
+      ? element.duration
+      : duration;
+    const nextTime = Math.min(Math.max(0, time), safeDuration || 0);
+
+    element.currentTime = nextTime;
+    setCurrentTime(nextTime);
   };
 
   // Handle volume change
@@ -164,6 +165,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
     <div className="container">
       <div className="header">
         <h3>{title}</h3>
+        <button
+          className="headerPlayButton"
+          onClick={handlePlayPause}
+          disabled={!src || isPreparingPreview}
+        >
+          {isPlaying ? "Pause" : "Play"}
+        </button>
       </div>
 
       {src ? (
@@ -175,6 +183,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
             src={playbackSource}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
             onEnded={handleEnded}
             onError={() => {
               void attemptPreviewFallback();
@@ -194,6 +204,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
             onSeek={handleSeek}
             volume={volume}
             onVolumeChange={handleVolumeChange}
+            showPlayButton={false}
           />
         </>
       ) : (

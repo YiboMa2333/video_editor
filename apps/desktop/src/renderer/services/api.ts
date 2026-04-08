@@ -57,3 +57,90 @@ export function resolveMediaSource(path: string | undefined): string | undefined
 
   return path;
 }
+
+type ProbeElement = HTMLVideoElement | HTMLAudioElement;
+
+const detectHasAudio = (element: ProbeElement): boolean | undefined => {
+  const withAudioHints = element as ProbeElement & {
+    mozHasAudio?: boolean;
+    webkitAudioDecodedByteCount?: number;
+    audioTracks?: { length: number };
+  };
+
+  if (typeof withAudioHints.mozHasAudio === "boolean") {
+    return withAudioHints.mozHasAudio;
+  }
+
+  if (typeof withAudioHints.webkitAudioDecodedByteCount === "number") {
+    return withAudioHints.webkitAudioDecodedByteCount > 0;
+  }
+
+  if (typeof withAudioHints.audioTracks?.length === "number") {
+    return withAudioHints.audioTracks.length > 0;
+  }
+
+  return undefined;
+};
+
+const probeMediaElement = (element: ProbeElement, source: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const onLoadedMetadata = () => {
+      cleanup();
+      resolve();
+    };
+
+    const onError = () => {
+      cleanup();
+      reject(new Error("Unable to load media metadata."));
+    };
+
+    const onTimeout = () => {
+      cleanup();
+      reject(new Error("Timed out while loading media metadata."));
+    };
+
+    const cleanup = () => {
+      element.removeEventListener("loadedmetadata", onLoadedMetadata);
+      element.removeEventListener("error", onError);
+      window.clearTimeout(timeout);
+    };
+
+    const timeout = window.setTimeout(onTimeout, 8000);
+
+    element.addEventListener("loadedmetadata", onLoadedMetadata, { once: true });
+    element.addEventListener("error", onError, { once: true });
+    element.preload = "metadata";
+    element.src = source;
+    element.load();
+  });
+
+export async function enrichMediaMetadata(item: MediaItem): Promise<MediaItem> {
+  if (item.type !== "video" && item.type !== "audio") {
+    return item;
+  }
+
+  const source = resolveMediaSource(item.path);
+  if (!source) {
+    return item;
+  }
+
+  const element = document.createElement(item.type === "audio" ? "audio" : "video");
+
+  try {
+    await probeMediaElement(element, source);
+    const rawDuration = Number.isFinite(element.duration) ? element.duration : undefined;
+    const durationSec = rawDuration && rawDuration > 0 ? rawDuration : item.durationSec;
+    const hasAudio = item.type === "audio" ? true : detectHasAudio(element);
+
+    return {
+      ...item,
+      durationSec,
+      hasAudio: hasAudio ?? item.hasAudio,
+    };
+  } catch {
+    return item;
+  } finally {
+    element.removeAttribute("src");
+    element.load();
+  }
+}

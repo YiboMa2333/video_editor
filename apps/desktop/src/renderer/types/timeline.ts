@@ -3,7 +3,10 @@ export interface Clip {
   mediaId: string;
   startSec: number;
   endSec: number;
-  timelineStartSec: number;
+  timelineStart: number;
+  timelineEnd: number;
+  timelineStartSec?: number;
+  timelineEndSec?: number;
 }
 
 export interface AudioClip extends Clip {

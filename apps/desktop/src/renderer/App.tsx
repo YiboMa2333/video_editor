@@ -3,6 +3,7 @@ import { checkBackendHealth } from "./services/api";
 import { useProjectStore } from "./store/useProjectStore";
 import MediaBin from "./components/MediaBin/MediaBin";
 import { VideoPlayer } from "./components/VideoPlayer/VideoPlayer";
+import Timeline from "./components/Timeline/Timeline";
 import "./App.css";
 
 export default function App() {
@@ -145,12 +146,17 @@ export default function App() {
         )}
       </section>
 
-      <div style={{ display: "flex", gap: "1px", flex: 1, height: "400px", minHeight: "400px" }}>
-        <div style={{ flex: 1, minWidth: "250px", overflow: "auto", borderRight: "1px solid #3e3e42" }}>
-          <MediaBin />
-        </div>
-        <div style={{ flex: 1, minWidth: "400px" }}>
-          <VideoPlayer src={selectedMedia?.path} title={selectedMedia?.name || "Video Preview"} />
+      <div className="editor-layout">
+        <div className="workspace-row">
+          <div className="media-column">
+            <MediaBin />
+          </div>
+          <div className="preview-column">
+            <div className="preview-scroll-area">
+              <VideoPlayer src={selectedMedia?.path} title={selectedMedia?.name || "Video Preview"} />
+              <Timeline />
+            </div>
+          </div>
         </div>
       </div>
     </main>

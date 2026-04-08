@@ -18,6 +18,9 @@ interface ProjectState {
   selectTrack: (trackId: string | null) => void;
   selectMedia: (mediaId: string | null) => void;
   addMedia: (item: MediaItem) => void;
+  addClipFromMedia: (mediaId: string) => void;
+  addVideoClip: (mediaId: string) => void;
+  addAudioClip: (mediaId: string) => void;
   clearAllImportedMedia: () => void;
   addTrack: (track: Track) => void;
   updateClip: (trackId: string, clipId: string, patch: Partial<Clip>) => void;
@@ -40,6 +43,43 @@ const buildProject = (name = "Untitled Project"): Project => ({
 });
 
 const initialProject = buildProject();
+
+const VIDEO_TRACK_ID = "track-video-main";
+const AUDIO_TRACK_ID = "track-audio-main";
+
+const buildTrack = (kind: Track["kind"]): Track => ({
+  id: kind === "video" ? VIDEO_TRACK_ID : AUDIO_TRACK_ID,
+  name: kind === "video" ? "Video Track" : "Audio Track",
+  kind,
+  clips: [],
+});
+
+const ensureTrack = (tracks: Track[], kind: "video" | "audio"): Track[] => {
+  if (tracks.some((track) => track.kind === kind)) {
+    return tracks;
+  }
+
+  return [...tracks, buildTrack(kind)];
+};
+
+const getTimelineTrackEnd = (track: Track): number =>
+  track.clips.reduce((maxEnd, clip) => {
+    const endFromBounds =
+      typeof clip.timelineEnd === "number"
+        ? clip.timelineEnd
+        : (clip.timelineStart ?? clip.timelineStartSec ?? 0) + Math.max(0, clip.endSec - clip.startSec);
+    return Math.max(maxEnd, endFromBounds);
+  }, 0);
+
+const appendClipToTrack = (tracks: Track[], trackKind: "video" | "audio", clip: Clip): Track[] =>
+  tracks.map((track) =>
+    track.kind === trackKind
+      ? {
+          ...track,
+          clips: [...track.clips, clip],
+        }
+      : track
+  );
 
 const updateActiveProject = (
   state: ProjectState,
@@ -120,6 +160,150 @@ export const useProjectStore = create<ProjectState>()(
             media: [...project.media, item],
             updatedAt: now(),
           })),
+        })),
+
+      addClipFromMedia: (mediaId) =>
+        set((state) => ({
+          ...updateActiveProject(state, (project) => {
+            const media = project.media.find((item) => item.id === mediaId);
+            if (!media) {
+              return project;
+            }
+
+            const durationSec = media.durationSec ?? 0;
+            if (durationSec <= 0) {
+              return project;
+            }
+
+            let tracks = project.tracks;
+            const shouldCreateVideoClip = media.type === "video";
+            const shouldCreateAudioClip = media.type === "audio" || media.hasAudio === true || media.type === "video";
+
+            if (!shouldCreateVideoClip && !shouldCreateAudioClip) {
+              return project;
+            }
+
+            if (shouldCreateVideoClip) {
+              tracks = ensureTrack(tracks, "video");
+            }
+
+            if (shouldCreateAudioClip) {
+              tracks = ensureTrack(tracks, "audio");
+            }
+
+            const videoTrack = tracks.find((track) => track.kind === "video");
+            const audioTrack = tracks.find((track) => track.kind === "audio");
+            const insertionStart = Math.max(
+              shouldCreateVideoClip && videoTrack ? getTimelineTrackEnd(videoTrack) : 0,
+              shouldCreateAudioClip && audioTrack ? getTimelineTrackEnd(audioTrack) : 0
+            );
+
+            if (shouldCreateVideoClip) {
+              const videoClip: Clip = {
+                id: crypto.randomUUID(),
+                mediaId,
+                startSec: 0,
+                endSec: durationSec,
+                timelineStart: insertionStart,
+                timelineEnd: insertionStart + durationSec,
+                timelineStartSec: insertionStart,
+                timelineEndSec: insertionStart + durationSec,
+              };
+              tracks = appendClipToTrack(tracks, "video", videoClip);
+            }
+
+            if (shouldCreateAudioClip) {
+              const audioClip: Clip = {
+                id: crypto.randomUUID(),
+                mediaId,
+                startSec: 0,
+                endSec: durationSec,
+                timelineStart: insertionStart,
+                timelineEnd: insertionStart + durationSec,
+                timelineStartSec: insertionStart,
+                timelineEndSec: insertionStart + durationSec,
+              };
+              tracks = appendClipToTrack(tracks, "audio", audioClip);
+            }
+
+            return {
+              ...project,
+              tracks,
+              updatedAt: now(),
+            };
+          }),
+        })),
+
+      addVideoClip: (mediaId) =>
+        set((state) => ({
+          ...updateActiveProject(state, (project) => {
+            const media = project.media.find((item) => item.id === mediaId);
+            if (!media || media.type !== "video") {
+              return project;
+            }
+
+            const durationSec = media.durationSec ?? 0;
+            if (durationSec <= 0) {
+              return project;
+            }
+
+            const tracks = ensureTrack(project.tracks, "video");
+            const videoTrack = tracks.find((track) => track.kind === "video");
+            const timelineStart = videoTrack ? getTimelineTrackEnd(videoTrack) : 0;
+
+            const clip: Clip = {
+              id: crypto.randomUUID(),
+              mediaId,
+              startSec: 0,
+              endSec: durationSec,
+              timelineStart,
+              timelineEnd: timelineStart + durationSec,
+              timelineStartSec: timelineStart,
+              timelineEndSec: timelineStart + durationSec,
+            };
+
+            return {
+              ...project,
+              tracks: appendClipToTrack(tracks, "video", clip),
+              updatedAt: now(),
+            };
+          }),
+        })),
+
+      addAudioClip: (mediaId) =>
+        set((state) => ({
+          ...updateActiveProject(state, (project) => {
+            const media = project.media.find((item) => item.id === mediaId);
+            if (!media || (media.type !== "audio" && media.hasAudio !== true && media.type !== "video")) {
+              return project;
+            }
+
+            const durationSec = media.durationSec ?? 0;
+            if (durationSec <= 0) {
+              return project;
+            }
+
+            const tracks = ensureTrack(project.tracks, "audio");
+            const audioTrack = tracks.find((track) => track.kind === "audio");
+            const timelineStart = audioTrack ? getTimelineTrackEnd(audioTrack) : 0;
+
+            const clip: Clip = {
+              id: crypto.randomUUID(),
+              mediaId,
+              startSec: 0,
+              endSec: durationSec,
+              timelineStart,
+              timelineEnd: timelineStart + durationSec,
+              timelineStartSec: timelineStart,
+              timelineEndSec: timelineStart + durationSec,
+            };
+
+            return {
+              ...project,
+              tracks: appendClipToTrack(tracks, "audio", clip),
+              updatedAt: now(),
+            };
+          }),
         })),
 
       clearAllImportedMedia: () =>
