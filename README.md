@@ -84,6 +84,30 @@ corepack pnpm approve-builds --all
 corepack pnpm rebuild electron esbuild
 ```
 
+## 3.1 API Setup (FastAPI Proxy Pipeline)
+
+The proxy generation API lives in `apps/api` and uses FastAPI.
+
+Install API dependencies from the repo root:
+
+```powershell
+cd "D:\AI_video_editor_project\ai-video-editor"
+C:/Users/Johnn/AppData/Local/Programs/Python/Python310/python.exe -m pip install -r apps/api/requirements.txt
+```
+
+Run the API server:
+
+```powershell
+cd "D:\AI_video_editor_project\ai-video-editor\apps\api"
+C:/Users/Johnn/AppData/Local/Programs/Python/Python310/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Important interpreter note (fixes `Import "fastapi" could not be resolved`):
+
+1. In VS Code, use `Python: Select Interpreter`.
+2. Select `C:\Users\Johnn\AppData\Local\Programs\Python\Python310\python.exe`.
+3. Do not use MSYS-style Python paths such as `d:/AI_video_editor_project/.venv/bin/python.exe` for this workspace.
+
 Why this is required:
 
 1. pnpm v10 blocks dependency build scripts by default.

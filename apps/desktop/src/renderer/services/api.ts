@@ -1,5 +1,14 @@
 import type { MediaItem } from "../types/media";
 
+type MediaImportResponse = {
+  id: string;
+  originalPath: string;
+  proxyPath?: string | null;
+  duration?: number;
+  hasAudio?: boolean;
+  isProxyReady?: boolean;
+};
+
 function detectMediaType(name: string): MediaItem["type"] {
   const ext = name.split(".").pop()?.toLowerCase();
 
@@ -28,7 +37,10 @@ export function createLocalMediaStub(filePath: string): MediaItem {
   return {
     id: crypto.randomUUID(),
     name,
+    originalPath: filePath,
+    proxyPath: undefined,
     path: filePath,
+    isProxyReady: false,
     type: detectMediaType(name),
   };
 }
@@ -37,9 +49,47 @@ export function createBrowserMediaStub(file: File): MediaItem {
   return {
     id: crypto.randomUUID(),
     name: file.name,
+    originalPath: URL.createObjectURL(file),
+    proxyPath: undefined,
     path: URL.createObjectURL(file),
+    isProxyReady: false,
     type: detectMediaType(file.name),
   };
+}
+
+export async function importMediaThroughBackend(originalPath: string): Promise<MediaItem> {
+  const response = await fetch("http://127.0.0.1:8000/media/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ originalPath }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Backend media import failed.");
+  }
+
+  const payload = (await response.json()) as MediaImportResponse;
+  const name = payload.originalPath.split(/[\\/]/).pop() ?? "unknown";
+
+  return {
+    id: payload.id,
+    name,
+    originalPath: payload.originalPath,
+    proxyPath: payload.proxyPath ?? undefined,
+    path: payload.proxyPath ?? payload.originalPath,
+    isProxyReady: payload.isProxyReady ?? Boolean(payload.proxyPath),
+    type: detectMediaType(name),
+    durationSec: payload.duration,
+    hasAudio: payload.hasAudio,
+  };
+}
+
+export function getPreferredPreviewPath(item: Pick<MediaItem, "proxyPath" | "originalPath" | "path" | "isProxyReady">): string | undefined {
+  if (item.proxyPath && item.isProxyReady !== false) {
+    return item.proxyPath;
+  }
+
+  return item.originalPath || item.path;
 }
 
 export function resolveMediaSource(path: string | undefined): string | undefined {
@@ -119,7 +169,7 @@ export async function enrichMediaMetadata(item: MediaItem): Promise<MediaItem> {
     return item;
   }
 
-  const source = resolveMediaSource(item.path);
+  const source = resolveMediaSource(getPreferredPreviewPath(item));
   if (!source) {
     return item;
   }

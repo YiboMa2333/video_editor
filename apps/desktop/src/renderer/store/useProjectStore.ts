@@ -103,6 +103,20 @@ const stripImportedMedia = (project: Project): Project => ({
   updatedAt: now(),
 });
 
+const normalizeMediaItem = (item: MediaItem): MediaItem => {
+  const originalPath = item.originalPath || item.path;
+  const proxyPath = item.proxyPath;
+  const path = proxyPath && item.isProxyReady !== false ? proxyPath : originalPath;
+
+  return {
+    ...item,
+    originalPath,
+    proxyPath,
+    path,
+    isProxyReady: item.isProxyReady ?? Boolean(proxyPath),
+  };
+};
+
 export const useProjectStore = create<ProjectState>()(
   persist(
     (set) => ({
@@ -157,7 +171,7 @@ export const useProjectStore = create<ProjectState>()(
         set((state) => ({
           ...updateActiveProject(state, (project) => ({
             ...project,
-            media: [...project.media, item],
+            media: [...project.media, normalizeMediaItem(item)],
             updatedAt: now(),
           })),
         })),

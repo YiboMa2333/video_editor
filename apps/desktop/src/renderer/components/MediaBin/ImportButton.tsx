@@ -1,4 +1,9 @@
-import { createBrowserMediaStub, createLocalMediaStub, enrichMediaMetadata } from "../../services/api";
+import {
+  createBrowserMediaStub,
+  createLocalMediaStub,
+  enrichMediaMetadata,
+  importMediaThroughBackend,
+} from "../../services/api";
 import { useProjectStore } from "../../store/useProjectStore";
 import { useRef, useState } from "react";
 
@@ -30,7 +35,9 @@ export default function ImportButton() {
         const previewPath = await window.desktopAPI.createPreviewFromBuffer(file.name, bytes);
         item = {
           ...item,
+          proxyPath: previewPath,
           path: previewPath,
+          isProxyReady: true,
         };
       }
 
@@ -54,7 +61,16 @@ export default function ImportButton() {
           return;
         }
 
-        const enrichedItem = await enrichMediaMetadata(createLocalMediaStub(filePath));
+        // Prefer backend import so proxy generation happens in one place.
+        let importedItem;
+        try {
+          importedItem = await importMediaThroughBackend(filePath);
+        } catch {
+          // Fallback: keep existing import behavior if backend is unavailable.
+          importedItem = createLocalMediaStub(filePath);
+        }
+
+        const enrichedItem = await enrichMediaMetadata(importedItem);
         importItem(enrichedItem);
         return;
       } finally {

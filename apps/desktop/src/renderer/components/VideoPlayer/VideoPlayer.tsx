@@ -4,11 +4,18 @@ import { resolveMediaSource } from '../../services/api';
 import './VideoPlayer.css';
 
 interface VideoPlayerProps {
-  src?: string;
+  originalPath?: string;
+  proxyPath?: string;
+  isProxyReady?: boolean;
   title?: string;
 }
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Preview' }) => {
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({
+  originalPath,
+  proxyPath,
+  isProxyReady,
+  title = 'Video Preview',
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -19,7 +26,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
   const [isPreparingPreview, setIsPreparingPreview] = useState(false);
   const [hasTriedPreviewFallback, setHasTriedPreviewFallback] = useState(false);
   const [hasLoadedMetadata, setHasLoadedMetadata] = useState(false);
-  const directSource = src ? resolveMediaSource(src) : undefined;
+  const preferredPath = proxyPath && isProxyReady !== false ? proxyPath : originalPath ?? proxyPath;
+  const directSource = preferredPath ? resolveMediaSource(preferredPath) : undefined;
 
   useEffect(() => {
     setCurrentTime(0);
@@ -29,28 +37,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
     setPlaybackSource(undefined);
     setHasTriedPreviewFallback(false);
     setHasLoadedMetadata(false);
-  }, [src]);
+  }, [originalPath, proxyPath, isProxyReady]);
 
   useEffect(() => {
     const prepareSource = async () => {
-      if (!src) {
+      if (!preferredPath) {
         setPlaybackSource(undefined);
         return;
       }
 
-      setPlaybackSource(resolveMediaSource(src));
+      setPlaybackSource(resolveMediaSource(preferredPath));
     };
 
     prepareSource();
-  }, [src]);
+  }, [preferredPath]);
 
   const attemptPreviewFallback = async () => {
-    if (!src) {
+    if (!originalPath) {
       setPlaybackError("Unable to load media.");
       return;
     }
 
-    if (!/^[a-zA-Z]:\\/.test(src) || !window.desktopAPI?.createPreview || hasTriedPreviewFallback) {
+    if (!/^[a-zA-Z]:\\/.test(originalPath) || !window.desktopAPI?.createPreview || hasTriedPreviewFallback) {
       setPlaybackError(
         "This file format or codec is not supported by the embedded Chromium player."
       );
@@ -61,7 +69,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
       setHasTriedPreviewFallback(true);
       setIsPreparingPreview(true);
       setPlaybackError(null);
-      const previewPath = await window.desktopAPI.createPreview(src);
+      const previewPath = await window.desktopAPI.createPreview(originalPath);
       setPlaybackSource(previewPath);
     } catch (error) {
       setPlaybackError(
@@ -73,7 +81,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
   };
 
   useEffect(() => {
-    if (!src || !/^[a-zA-Z]:\\/.test(src) || !playbackSource) {
+    if (!originalPath || !/^[a-zA-Z]:\\/.test(originalPath) || !playbackSource) {
       return;
     }
 
@@ -96,7 +104,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
     }, 1500);
 
     return () => window.clearTimeout(timer);
-  }, [src, playbackSource, directSource, hasLoadedMetadata, hasTriedPreviewFallback, isPreparingPreview]);
+  }, [originalPath, playbackSource, directSource, hasLoadedMetadata, hasTriedPreviewFallback, isPreparingPreview]);
 
   // Update current time as video plays
   const handleTimeUpdate = () => {
@@ -168,14 +176,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title = 'Video Pr
         <button
           className="headerPlayButton"
           onClick={handlePlayPause}
-          disabled={!src || isPreparingPreview}
+          disabled={!preferredPath || isPreparingPreview}
         >
           {isPlaying ? "Pause" : "Play"}
         </button>
       </div>
 
-      {src ? (
+      {preferredPath ? (
         <>
+          {proxyPath && isProxyReady === false ? <div className="statusBanner">Generating preview...</div> : null}
           {isPreparingPreview ? <div className="statusBanner">Generating compatible preview...</div> : null}
           <video
             ref={videoRef}
