@@ -11,12 +11,17 @@ interface ProjectState {
   selectedClipId: string | null;
   selectedTrackId: string | null;
   selectedMediaId: string | null;
+  selectedRangeStartSec: number | null;
+  selectedRangeEndSec: number | null;
+  undoStackDepth: number;
   setProject: (project: Project) => void;
   createProject: (name?: string) => void;
   switchProject: (projectId: string) => void;
   selectClip: (clipId: string | null) => void;
   selectTrack: (trackId: string | null) => void;
   selectMedia: (mediaId: string | null) => void;
+  setSelectedRange: (startSec: number | null, endSec: number | null) => void;
+  clearSelectedRange: () => void;
   addMedia: (item: MediaItem) => void;
   addClipFromMedia: (mediaId: string) => void;
   addVideoClip: (mediaId: string) => void;
@@ -27,6 +32,8 @@ interface ProjectState {
   renameProject: (name: string) => void;
   resetProjectState: () => void;
 }
+
+const nextUndoDepth = (currentDepth: number): number => Math.min(currentDepth + 1, 100);
 
 const now = () => new Date().toISOString();
 
@@ -45,21 +52,30 @@ const buildProject = (name = "Untitled Project"): Project => ({
 const initialProject = buildProject();
 
 const VIDEO_TRACK_ID = "track-video-main";
-const AUDIO_TRACK_ID = "track-audio-main";
 
-const buildTrack = (kind: Track["kind"]): Track => ({
-  id: kind === "video" ? VIDEO_TRACK_ID : AUDIO_TRACK_ID,
-  name: kind === "video" ? "Video Track" : "Audio Track",
-  kind,
+const buildTrack = (): Track => ({
+  id: VIDEO_TRACK_ID,
+  name: "Timeline Track",
+  kind: "video",
   clips: [],
 });
 
-const ensureTrack = (tracks: Track[], kind: "video" | "audio"): Track[] => {
-  if (tracks.some((track) => track.kind === kind)) {
-    return tracks;
+const ensureSingleTrack = (tracks: Track[]): Track[] => {
+  const existing = tracks.find((track) => track.kind === "video" && track.id === VIDEO_TRACK_ID)
+    ?? tracks.find((track) => track.kind === "video");
+
+  if (existing) {
+    return [
+      {
+        ...existing,
+        id: VIDEO_TRACK_ID,
+        name: "Timeline Track",
+        kind: "video",
+      },
+    ];
   }
 
-  return [...tracks, buildTrack(kind)];
+  return [buildTrack()];
 };
 
 const getTimelineTrackEnd = (track: Track): number =>
@@ -71,7 +87,7 @@ const getTimelineTrackEnd = (track: Track): number =>
     return Math.max(maxEnd, endFromBounds);
   }, 0);
 
-const appendClipToTrack = (tracks: Track[], trackKind: "video" | "audio", clip: Clip): Track[] =>
+const appendClipToTrack = (tracks: Track[], trackKind: "video", clip: Clip): Track[] =>
   tracks.map((track) =>
     track.kind === trackKind
       ? {
@@ -92,6 +108,22 @@ const updateActiveProject = (
     projects: state.projects.map((item) => (item.id === project.id ? project : item)),
   };
 };
+
+// Sanitize a media item before persisting — only keep small, safe fields.
+// This prevents blob URLs, large accumulated strings, or accidental extra
+// fields from bloating localStorage and causing JSON.stringify failures.
+const safeSerializeMediaItem = (item: MediaItem): MediaItem => ({
+  id: item.id,
+  name: item.name,
+  // Blob URLs are session-only and invalid on reload — strip them.
+  originalPath: /^blob:/i.test(item.originalPath) ? "" : item.originalPath,
+  path: /^blob:/i.test(item.path) ? "" : item.path,
+  type: item.type,
+  durationSec: item.durationSec,
+  hasAudio: item.hasAudio,
+  thumbnailDir: item.thumbnailDir,
+  thumbnailFps: item.thumbnailFps,
+});
 
 const stripImportedMedia = (project: Project): Project => ({
   ...project,
@@ -125,6 +157,9 @@ export const useProjectStore = create<ProjectState>()(
       selectedClipId: null,
       selectedTrackId: null,
       selectedMediaId: null,
+      selectedRangeStartSec: null,
+      selectedRangeEndSec: null,
+      undoStackDepth: 0,
 
       setProject: (project) =>
         set((state) => ({
@@ -136,6 +171,9 @@ export const useProjectStore = create<ProjectState>()(
           selectedClipId: null,
           selectedTrackId: null,
           selectedMediaId: null,
+          selectedRangeStartSec: null,
+          selectedRangeEndSec: null,
+          undoStackDepth: 0,
         })),
 
       createProject: (name) => {
@@ -147,6 +185,9 @@ export const useProjectStore = create<ProjectState>()(
           selectedClipId: null,
           selectedTrackId: null,
           selectedMediaId: null,
+          selectedRangeStartSec: null,
+          selectedRangeEndSec: null,
+          undoStackDepth: nextUndoDepth(state.undoStackDepth),
         }));
       },
 
@@ -159,12 +200,17 @@ export const useProjectStore = create<ProjectState>()(
             selectedClipId: null,
             selectedTrackId: null,
             selectedMediaId: null,
+            selectedRangeStartSec: null,
+            selectedRangeEndSec: null,
           };
         }),
 
       selectClip: (selectedClipId) => set({ selectedClipId }),
       selectTrack: (selectedTrackId) => set({ selectedTrackId }),
       selectMedia: (selectedMediaId) => set({ selectedMediaId }),
+      setSelectedRange: (selectedRangeStartSec, selectedRangeEndSec) =>
+        set({ selectedRangeStartSec, selectedRangeEndSec }),
+      clearSelectedRange: () => set({ selectedRangeStartSec: null, selectedRangeEndSec: null }),
 
       addMedia: (item) =>
         set((state) => ({
@@ -173,6 +219,7 @@ export const useProjectStore = create<ProjectState>()(
             media: [...project.media, normalizeMediaItem(item)],
             updatedAt: now(),
           })),
+          undoStackDepth: nextUndoDepth(state.undoStackDepth),
         })),
 
       addClipFromMedia: (mediaId) =>
@@ -188,56 +235,26 @@ export const useProjectStore = create<ProjectState>()(
               return project;
             }
 
-            let tracks = project.tracks;
-            const shouldCreateVideoClip = media.type === "video";
-            const shouldCreateAudioClip = media.type === "audio" || media.hasAudio === true || media.type === "video";
-
-            if (!shouldCreateVideoClip && !shouldCreateAudioClip) {
+            if (media.type === "unknown") {
               return project;
             }
 
-            if (shouldCreateVideoClip) {
-              tracks = ensureTrack(tracks, "video");
-            }
+            let tracks = ensureSingleTrack(project.tracks);
+            const timelineTrack = tracks[0];
+            const insertionStart = getTimelineTrackEnd(timelineTrack);
 
-            if (shouldCreateAudioClip) {
-              tracks = ensureTrack(tracks, "audio");
-            }
+            const clip: Clip = {
+              id: crypto.randomUUID(),
+              mediaId,
+              startSec: 0,
+              endSec: durationSec,
+              timelineStart: insertionStart,
+              timelineEnd: insertionStart + durationSec,
+              timelineStartSec: insertionStart,
+              timelineEndSec: insertionStart + durationSec,
+            };
 
-            const videoTrack = tracks.find((track) => track.kind === "video");
-            const audioTrack = tracks.find((track) => track.kind === "audio");
-            const insertionStart = Math.max(
-              shouldCreateVideoClip && videoTrack ? getTimelineTrackEnd(videoTrack) : 0,
-              shouldCreateAudioClip && audioTrack ? getTimelineTrackEnd(audioTrack) : 0
-            );
-
-            if (shouldCreateVideoClip) {
-              const videoClip: Clip = {
-                id: crypto.randomUUID(),
-                mediaId,
-                startSec: 0,
-                endSec: durationSec,
-                timelineStart: insertionStart,
-                timelineEnd: insertionStart + durationSec,
-                timelineStartSec: insertionStart,
-                timelineEndSec: insertionStart + durationSec,
-              };
-              tracks = appendClipToTrack(tracks, "video", videoClip);
-            }
-
-            if (shouldCreateAudioClip) {
-              const audioClip: Clip = {
-                id: crypto.randomUUID(),
-                mediaId,
-                startSec: 0,
-                endSec: durationSec,
-                timelineStart: insertionStart,
-                timelineEnd: insertionStart + durationSec,
-                timelineStartSec: insertionStart,
-                timelineEndSec: insertionStart + durationSec,
-              };
-              tracks = appendClipToTrack(tracks, "audio", audioClip);
-            }
+            tracks = appendClipToTrack(tracks, "video", clip);
 
             return {
               ...project,
@@ -245,6 +262,7 @@ export const useProjectStore = create<ProjectState>()(
               updatedAt: now(),
             };
           }),
+          undoStackDepth: nextUndoDepth(state.undoStackDepth),
         })),
 
       addVideoClip: (mediaId) =>
@@ -260,9 +278,8 @@ export const useProjectStore = create<ProjectState>()(
               return project;
             }
 
-            const tracks = ensureTrack(project.tracks, "video");
-            const videoTrack = tracks.find((track) => track.kind === "video");
-            const timelineStart = videoTrack ? getTimelineTrackEnd(videoTrack) : 0;
+            const tracks = ensureSingleTrack(project.tracks);
+            const timelineStart = getTimelineTrackEnd(tracks[0]);
 
             const clip: Clip = {
               id: crypto.randomUUID(),
@@ -281,6 +298,7 @@ export const useProjectStore = create<ProjectState>()(
               updatedAt: now(),
             };
           }),
+          undoStackDepth: nextUndoDepth(state.undoStackDepth),
         })),
 
       addAudioClip: (mediaId) =>
@@ -296,9 +314,8 @@ export const useProjectStore = create<ProjectState>()(
               return project;
             }
 
-            const tracks = ensureTrack(project.tracks, "audio");
-            const audioTrack = tracks.find((track) => track.kind === "audio");
-            const timelineStart = audioTrack ? getTimelineTrackEnd(audioTrack) : 0;
+            const tracks = ensureSingleTrack(project.tracks);
+            const timelineStart = getTimelineTrackEnd(tracks[0]);
 
             const clip: Clip = {
               id: crypto.randomUUID(),
@@ -313,10 +330,11 @@ export const useProjectStore = create<ProjectState>()(
 
             return {
               ...project,
-              tracks: appendClipToTrack(tracks, "audio", clip),
+              tracks: appendClipToTrack(tracks, "video", clip),
               updatedAt: now(),
             };
           }),
+          undoStackDepth: nextUndoDepth(state.undoStackDepth),
         })),
 
       clearAllImportedMedia: () =>
@@ -331,15 +349,24 @@ export const useProjectStore = create<ProjectState>()(
             updatedAt: now(),
           })),
           selectedMediaId: null,
+          selectedClipId: null,
+          selectedTrackId: null,
+          selectedRangeStartSec: null,
+          selectedRangeEndSec: null,
+          undoStackDepth: nextUndoDepth(state.undoStackDepth),
         })),
 
       addTrack: (track) =>
         set((state) => ({
           ...updateActiveProject(state, (project) => ({
             ...project,
-            tracks: [...project.tracks, track],
+            tracks:
+              track.kind === "video"
+                ? ensureSingleTrack([...project.tracks, track])
+                : ensureSingleTrack(project.tracks),
             updatedAt: now(),
           })),
+          undoStackDepth: nextUndoDepth(state.undoStackDepth),
         })),
 
       updateClip: (trackId, clipId, patch) =>
@@ -358,6 +385,7 @@ export const useProjectStore = create<ProjectState>()(
             ),
             updatedAt: now(),
           })),
+          undoStackDepth: nextUndoDepth(state.undoStackDepth),
         })),
 
       renameProject: (name) =>
@@ -367,6 +395,7 @@ export const useProjectStore = create<ProjectState>()(
             name,
             updatedAt: now(),
           })),
+          undoStackDepth: nextUndoDepth(state.undoStackDepth),
         })),
 
       resetProjectState: () => {
@@ -378,6 +407,9 @@ export const useProjectStore = create<ProjectState>()(
           selectedClipId: null,
           selectedTrackId: null,
           selectedMediaId: null,
+          selectedRangeStartSec: null,
+          selectedRangeEndSec: null,
+          undoStackDepth: 0,
         });
       },
     }),
@@ -396,7 +428,10 @@ export const useProjectStore = create<ProjectState>()(
         };
       },
       partialize: (state) => ({
-        projects: state.projects,
+        projects: state.projects.map((project) => ({
+          ...project,
+          media: project.media.map(safeSerializeMediaItem),
+        })),
         currentProjectId: state.currentProjectId,
       }),
       merge: (persistedState, currentState) => {

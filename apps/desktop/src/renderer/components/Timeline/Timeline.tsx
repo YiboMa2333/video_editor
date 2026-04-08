@@ -1,105 +1,42 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
-import type { Clip, Track } from "../../types/timeline";
+import type { Track } from "../../types/timeline";
 import { TimelineTrack } from "./TimelineTrack";
 import "./Timeline.css";
 import { usePlayerStore } from "../../store/usePlayerStore";
 import { SeekerBar } from "./SeekerBar";
+import { getTimelineDuration, getTimelineEnd, getTimelineStart } from "../../utils/timelineMetrics";
 
-const MIN_TIMELINE_DURATION_SEC = 30;
-
-const fallbackTrack = (kind: "video" | "audio", id: string, name: string): Track => ({
-  id,
-  name,
-  kind,
+const fallbackTrack = (): Track => ({
+  id: "video-track",
+  name: "Timeline Track",
+  kind: "video",
   clips: [],
 });
-
-const getTimelineStart = (clip: Clip): number => {
-  const withTimelineAlias = clip as Clip & { timelineStart?: number };
-  return withTimelineAlias.timelineStart ?? clip.timelineStartSec ?? 0;
-};
-
-const getTimelineEnd = (clip: Clip): number => {
-  const withTimelineAlias = clip as Clip & { timelineEnd?: number; timelineEndSec?: number };
-
-  if (typeof withTimelineAlias.timelineEnd === "number") {
-    return withTimelineAlias.timelineEnd;
-  }
-
-  if (typeof withTimelineAlias.timelineEndSec === "number") {
-    return withTimelineAlias.timelineEndSec;
-  }
-
-  const duration = Math.max(0, clip.endSec - clip.startSec);
-  return getTimelineStart(clip) + duration;
-};
 
 export default function Timeline() {
   const tracks = useProjectStore((state) => state.project.tracks);
   const currentTimeSec = usePlayerStore((s) => s.currentTime);
+  const setDuration = usePlayerStore((s) => s.setDuration);
   const isScrubbing = usePlayerStore((s) => s.isScrubbing);
   const scrubTime = usePlayerStore((s) => s.scrubTime);
-  const beginScrub = usePlayerStore((s) => s.beginScrub);
-  const endScrub = usePlayerStore((s) => s.endScrub);
-  const setScrubTime = usePlayerStore((s) => s.setScrubTime);
-  const setCurrentTime = usePlayerStore((s) => s.setCurrentTime);
-  const requestSeek = usePlayerStore((s) => s.requestSeek);
-  const timelineBodyRef = useRef<HTMLDivElement>(null);
 
-  const orderedTracks = useMemo(() => {
-    const videoTrack = tracks.find((track) => track.kind === "video") ??
-      fallbackTrack("video", "video-track", "Video Track");
-    const audioTrack = tracks.find((track) => track.kind === "audio") ??
-      fallbackTrack("audio", "audio-track", "Audio Track");
-
-    return [videoTrack, audioTrack];
+  const orderedTracks = useMemo<Track[]>(() => {
+    const videoTrack = tracks.find((track) => track.kind === "video") ?? fallbackTrack();
+    return [videoTrack];
   }, [tracks]);
 
   const timelineDurationSec = useMemo(() => {
-    const endTimes = orderedTracks.flatMap((track) => track.clips.map(getTimelineEnd));
-    const maxEnd = endTimes.length > 0 ? Math.max(...endTimes) : 0;
-    return Math.max(MIN_TIMELINE_DURATION_SEC, maxEnd);
+    return getTimelineDuration(orderedTracks);
   }, [orderedTracks]);
+
+  useEffect(() => {
+    setDuration(timelineDurationSec);
+  }, [setDuration, timelineDurationSec]);
 
   // While scrubbing, timeline UI should follow scrubTime immediately so the
   // playhead and overlays feel responsive without forcing video seeks.
   const displayTimeSec = isScrubbing && scrubTime !== null ? scrubTime : currentTimeSec;
-
-  const clampTimelineTime = (value: number): number => {
-    if (!Number.isFinite(value)) {
-      return 0;
-    }
-
-    return Math.min(Math.max(0, value), timelineDurationSec);
-  };
-
-  const timelineTimeFromPointer = (clientX: number): number => {
-    const body = timelineBodyRef.current;
-    if (!body) {
-      return displayTimeSec;
-    }
-
-    const rect = body.getBoundingClientRect();
-    if (rect.width <= 0) {
-      return displayTimeSec;
-    }
-
-    const ratio = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
-    return clampTimelineTime(ratio * timelineDurationSec);
-  };
-
-  const commitTimelineScrub = () => {
-    if (!isScrubbing) {
-      return;
-    }
-
-    const target = clampTimelineTime(scrubTime ?? currentTimeSec);
-    requestSeek(target);
-    setCurrentTime(target);
-    setScrubTime(null);
-    endScrub();
-  };
 
   return (
     <section className="timeline-panel">
@@ -108,33 +45,7 @@ export default function Timeline() {
         <span className="timeline-duration">{timelineDurationSec.toFixed(1)}s</span>
       </div>
 
-      <div
-        ref={timelineBodyRef}
-        className="timeline-body"
-        role="group"
-        aria-label="Timeline tracks"
-        onPointerDown={(event) => {
-          const nextTime = timelineTimeFromPointer(event.clientX);
-          beginScrub(nextTime);
-          setScrubTime(nextTime);
-          setCurrentTime(nextTime);
-        }}
-        onPointerMove={(event) => {
-          if (!isScrubbing) {
-            return;
-          }
-
-          const nextTime = timelineTimeFromPointer(event.clientX);
-          setScrubTime(nextTime);
-          setCurrentTime(nextTime);
-        }}
-        onPointerUp={commitTimelineScrub}
-        onPointerLeave={() => {
-          if (isScrubbing) {
-            commitTimelineScrub();
-          }
-        }}
-      >
+      <div className="timeline-body" role="group" aria-label="Timeline tracks">
         {orderedTracks.map((track) => (
           <TimelineTrack
             key={track.id}
@@ -147,7 +58,12 @@ export default function Timeline() {
         ))}
       </div>
 
-      <SeekerBar timelineDurationSec={timelineDurationSec} />
+      <div className="timeline-seeker-row" aria-label="Timeline seeker row">
+        <div className="timeline-seeker-spacer" aria-hidden />
+        <div className="timeline-seeker-lane">
+          <SeekerBar timelineDurationSec={timelineDurationSec} />
+        </div>
+      </div>
     </section>
   );
 }

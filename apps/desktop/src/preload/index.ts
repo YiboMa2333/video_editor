@@ -20,14 +20,4 @@ contextBridge.exposeInMainWorld("desktopAPI", {
     }>,
 });
 
-contextBridge.exposeInMainWorld("electron", {
-  onShowNewProjectDialog: (callback: () => void) => {
-    const handler = () => callback();
-    ipcRenderer.on("app:show-new-project-dialog", handler);
-    return () => {
-      ipcRenderer.removeListener("app:show-new-project-dialog", handler);
-    };
-  },
-});
-
 console.log("Preload script loaded, APIs exposed");

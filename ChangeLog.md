@@ -2,6 +2,31 @@
 
 All notable project changes are listed here.
 
+## 2026-04-09 — UI simplification and timeline UX updates
+
+- Simplified the main editor UI to remove project-management focused sections and keep the editing-first surface.
+- Removed `New Project` from the desktop `File` menu and removed related renderer/preload bridge wiring.
+- Introduced a cleaner editor layout with dedicated top bar, media sidebar, preview area, playback info row, editing toolbar, and timeline section.
+- Upgraded media sidebar items to show thumbnail, filename, and duration with clearer selection and add-to-timeline behavior.
+- Added toolbar disabled-state logic based on editor conditions:
+  - clip selection requirements for split/duplicate
+  - valid range requirement for delete-range
+  - clip position requirements for move-left/move-right
+  - undo-history availability for undo
+- Fixed timeline total-duration and time display behavior to track timeline content correctly.
+- Removed separate audio lane presentation and switched timeline display/insertion flow to a single-track model for current UX goals.
+- Updated import behavior so imported media does not auto-insert into timeline; insertion is explicit via user action.
+- Wired delete-all media action to also clear cache usage paths and reset playback/timeline time to `00:00 / 00:00`.
+- Reworked seeker/playhead interaction so seeker appears directly under the timeline lane with clearer positioning and scrub behavior.
+- Added bidirectional selection sync:
+  - selecting media can select its corresponding timeline clip
+  - selecting timeline clip syncs media selection
+  - both flows seek to clip head for faster edit targeting
+- Added selected clip styling improvements for clearer active-edit context.
+- Fixed boundary seek bug where jumping to a clip head could display the previous clip's end frame:
+  - timeline mapping now uses ordered clip resolution with half-open intervals `[start, end)`
+  - preserves end-of-sequence fallback for the final clip boundary
+
 ## 2026-04-08 — Frame viewer and thumbnail optimization
 
 - **Refactored VideoPlayer component** (`apps/desktop/src/renderer/components/VideoPlayer/VideoPlayer.tsx`):

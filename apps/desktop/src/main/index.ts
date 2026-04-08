@@ -220,33 +220,32 @@ async function createPreviewFromBuffer(fileName: string, bytes: Uint8Array) {
 
 async function getVideoDuration(filePath: string): Promise<number> {
   if (!ffmpegPath) {
-    throw new Error("ffmpeg binary is unavailable");
+    return 0;
   }
 
-  return new Promise((resolve, reject) => {
-    const ffmpeg = spawn(ffmpegPath, ["-v", "quiet", "-print_format", "json", "-show_format", "-i", filePath], {
+  return new Promise((resolve) => {
+    // Run ffmpeg with just the input — it exits with code 1 (no output file)
+    // but always writes "Duration: HH:MM:SS.ss" to stderr before exiting.
+    const ffmpeg = spawn(ffmpegPath, ["-v", "info", "-i", filePath], {
       windowsHide: true,
     });
 
-    let stdout = "";
-    ffmpeg.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
+    let stderr = "";
+    ffmpeg.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
     });
 
-    ffmpeg.on("close", (code) => {
-      if (code !== 0) {
-        resolve(0); // Default to 0 if duration cannot be determined
+    ffmpeg.on("close", () => {
+      const match = /Duration:\s*(\d+):(\d+):([\d.]+)/.exec(stderr);
+      if (!match) {
+        resolve(0);
         return;
       }
-
-      try {
-        const json = JSON.parse(stdout) as { format?: { duration?: string | number } };
-        const duration = json.format?.duration;
-        const durationSec = typeof duration === "string" ? parseFloat(duration) : typeof duration === "number" ? duration : 0;
-        resolve(Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 0);
-      } catch {
-        resolve(0);
-      }
+      const secs =
+        parseInt(match[1], 10) * 3600 +
+        parseInt(match[2], 10) * 60 +
+        parseFloat(match[3]);
+      resolve(Number.isFinite(secs) && secs > 0 ? secs : 0);
     });
 
     ffmpeg.on("error", () => resolve(0));
@@ -406,18 +405,6 @@ function createMenu() {
     {
       label: "File",
       submenu: [
-        {
-          label: "New Project",
-          accelerator: "CmdOrCtrl+N",
-          click: async () => {
-            if (mainWindow) {
-              await mainWindow.webContents.executeJavaScript(
-                'window.dispatchEvent(new CustomEvent("app:new-project"));'
-              );
-            }
-          },
-        },
-        { type: "separator" },
         {
           label: "Exit",
           accelerator: "CmdOrCtrl+Q",

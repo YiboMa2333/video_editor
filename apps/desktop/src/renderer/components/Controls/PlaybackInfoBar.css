@@ -1,0 +1,35 @@
+.playback-info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(137, 154, 182, 0.16);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(24, 28, 35, 0.96) 0%, rgba(18, 21, 26, 0.98) 100%);
+}
+
+.playback-time-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.playback-info-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8694a8;
+}
+
+.playback-time-summary strong {
+  font-size: 18px;
+  color: #f4f7fb;
+}
+
+@media (max-width: 760px) {
+  .playback-info-bar {
+    padding: 12px;
+  }
+}

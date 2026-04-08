@@ -35,6 +35,34 @@ const getClipTimelineEnd = (clip: Clip): number => {
   return getClipTimelineStart(clip) + Math.max(0, clip.endSec - clip.startSec);
 };
 
+const sortByTimelineStart = (clips: readonly Clip[]): Clip[] => {
+  return [...clips].sort((a, b) => getClipTimelineStart(a) - getClipTimelineStart(b));
+};
+
+const findClipAtTimelineTime = (timelineTimeSec: number, clips: readonly Clip[]): Clip | null => {
+  if (clips.length === 0) {
+    return null;
+  }
+
+  const ordered = sortByTimelineStart(clips);
+
+  // Use half-open clip bounds [start, end) so exact boundaries resolve to the
+  // next clip's head instead of the previous clip's last frame.
+  for (const clip of ordered) {
+    const start = getClipTimelineStart(clip);
+    const end = getClipTimelineEnd(clip);
+    if (timelineTimeSec >= start && timelineTimeSec < end) {
+      return clip;
+    }
+  }
+
+  // If timeline time is exactly at the end of the full sequence, keep the
+  // final clip active so preview does not fall back unexpectedly.
+  const lastClip = ordered[ordered.length - 1];
+  const lastEnd = getClipTimelineEnd(lastClip);
+  return timelineTimeSec === lastEnd ? lastClip : null;
+};
+
 /**
  * Map a timeline playhead position to the matching source-file timestamp.
  *
@@ -54,11 +82,7 @@ export function resolveSourceTime(
     return null;
   }
 
-  const activeClip = clips.find((clip) => {
-    const start = getTimelineStart(clip);
-    const end = getTimelineEnd(clip);
-    return timelineTimeSec >= start && timelineTimeSec <= end;
-  });
+  const activeClip = findClipAtTimelineTime(timelineTimeSec, clips);
 
   if (!activeClip) {
     // Not an error — the playhead may be in a gap between clips.
@@ -108,11 +132,7 @@ export function mapTimelineTimeToSourceTime(
     });
   }
 
-  const activeClip = clips.find((clip) => {
-    const start = getClipTimelineStart(clip);
-    const end = getClipTimelineEnd(clip);
-    return safeTimelineTime >= start && safeTimelineTime <= end;
-  });
+  const activeClip = findClipAtTimelineTime(safeTimelineTime, clips);
 
   if (!activeClip) {
     // Safe fallback: no clip at this timeline position (gap). We return the

@@ -9,14 +9,12 @@ import { useRef, useState } from "react";
 
 export default function ImportButton() {
   const addMedia = useProjectStore((s) => s.addMedia);
-  const addClipFromMedia = useProjectStore((s) => s.addClipFromMedia);
   const selectMedia = useProjectStore((s) => s.selectMedia);
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const importItem = (item: ReturnType<typeof createLocalMediaStub>) => {
     addMedia(item);
-    addClipFromMedia(item.id);
     selectMedia(item.id);
   };
 

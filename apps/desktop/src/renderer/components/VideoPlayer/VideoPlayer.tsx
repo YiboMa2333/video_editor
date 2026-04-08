@@ -10,7 +10,6 @@ interface VideoPlayerProps {
   title?: string;
   thumbnailDir?: string;
   thumbnailFps?: number;
-  durationSec?: number;
 }
 
 const getTimelineStart = (clip: { timelineStartSec?: number; startSec: number }): number => {
@@ -30,10 +29,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   title = "Frame Viewer",
   thumbnailDir,
   thumbnailFps,
-  durationSec = 0,
 }) => {
   const setStoreCurrentTime = usePlayerStore((s) => s.setCurrentTime);
-  const setStoreDuration = usePlayerStore((s) => s.setDuration);
   const isScrubbing = usePlayerStore((s) => s.isScrubbing);
   const scrubTime = usePlayerStore((s) => s.scrubTime);
   const currentTime = usePlayerStore((s) => s.currentTime);
@@ -88,13 +85,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return getThumbnailSrc(displayMedia, displayMapping.sourceTimeSec);
   }, [displayMedia, displayMapping.sourceTimeSec]);
 
-  // Initialize store duration
-  useEffect(() => {
-    if (durationSec > 0) {
-      setStoreDuration(durationSec);
-    }
-  }, [durationSec, setStoreDuration]);
-
   // Keep store currentTime in sync
   useEffect(() => {
     setStoreCurrentTime(displayTimelineTime);
@@ -120,7 +110,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       ) : (
         <div className="placeholder">
-          <p>No frames available. Import media to preview.</p>
+          <p>Import a video to begin editing.</p>
         </div>
       )}
     </div>

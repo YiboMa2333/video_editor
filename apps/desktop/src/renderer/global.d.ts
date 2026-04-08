@@ -16,8 +16,5 @@ declare global {
         failedPaths: Array<{ path: string; error: string }>;
       }>;
     };
-    electron?: {
-      onShowNewProjectDialog: (callback: () => void) => () => void;
-    };
   }
 }

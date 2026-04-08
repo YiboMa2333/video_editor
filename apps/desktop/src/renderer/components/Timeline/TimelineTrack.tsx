@@ -33,6 +33,7 @@ export function TimelineTrack({
         {track.clips.map((clip) => (
           <TimelineClip
             key={clip.id}
+            trackId={track.id}
             clip={clip}
             timelineDurationSec={timelineDurationSec}
             timelineStartSec={getTimelineStart(clip)}
