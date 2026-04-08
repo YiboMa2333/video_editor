@@ -11,6 +11,7 @@ from fastapi import APIRouter
 
 from ...models.media import ImportMediaRequest, MediaResponse
 from ...services.proxy_service import generate_proxy_video
+from ...services.thumbnail_service import generate_thumbnails
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/media", tags=["media"])
@@ -62,32 +63,49 @@ def import_media(payload: ImportMediaRequest) -> MediaResponse:
 
     media_id = str(uuid.uuid4())
     repo_root = _find_repo_root()
-    proxy_dir = repo_root / "runtime" / "cache" / "proxies"
+    cache_root = repo_root / "runtime" / "cache"
+    proxy_dir = cache_root / "proxies"
     proxy_dir.mkdir(parents=True, exist_ok=True)
     proxy_path = proxy_dir / f"{media_id}.mp4"
+    thumbnail_dir = cache_root / "thumbnails" / media_id
+    thumbnail_fps = 1.0
 
     duration, has_audio = _probe_media(payload.originalPath)
 
+    generated_proxy: Optional[str] = None
+    is_proxy_ready = False
+
     try:
         generated_proxy = generate_proxy_video(payload.originalPath, str(proxy_path))
-        return MediaResponse(
-            id=media_id,
-            originalPath=payload.originalPath,
-            proxyPath=generated_proxy,
-            duration=duration,
-            hasAudio=has_audio,
-            isProxyReady=True,
-        )
+        is_proxy_ready = True
     except Exception:
         logger.exception(
             "Proxy generation failed during import",
             extra={"media_id": media_id, "original": payload.originalPath, "proxy": str(proxy_path)},
         )
-        return MediaResponse(
-            id=media_id,
-            originalPath=payload.originalPath,
-            proxyPath=None,
-            duration=duration,
-            hasAudio=has_audio,
-            isProxyReady=False,
+
+    # Use proxy for thumbnail extraction when available, otherwise fall back to
+    # original media so timeline rendering still works.
+    thumbnail_source = generated_proxy or payload.originalPath
+    thumbnail_dir_value: Optional[str] = None
+
+    try:
+        generated = generate_thumbnails(thumbnail_source, str(thumbnail_dir), fps=thumbnail_fps)
+        if generated:
+            thumbnail_dir_value = str(thumbnail_dir)
+    except Exception:
+        logger.exception(
+            "Thumbnail generation failed during import",
+            extra={"media_id": media_id, "source": thumbnail_source, "thumbnail_dir": str(thumbnail_dir)},
         )
+
+    return MediaResponse(
+        id=media_id,
+        originalPath=payload.originalPath,
+        proxyPath=generated_proxy,
+        thumbnailDir=thumbnail_dir_value,
+        thumbnailFps=thumbnail_fps if thumbnail_dir_value else None,
+        duration=duration,
+        hasAudio=has_audio,
+        isProxyReady=is_proxy_ready,
+    )

@@ -28,18 +28,7 @@ export default function ImportButton() {
 
     try {
       setIsLoading(true);
-      let item = createBrowserMediaStub(file);
-
-      if (item.type === "video" && window.desktopAPI?.createPreviewFromBuffer) {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const previewPath = await window.desktopAPI.createPreviewFromBuffer(file.name, bytes);
-        item = {
-          ...item,
-          proxyPath: previewPath,
-          path: previewPath,
-          isProxyReady: true,
-        };
-      }
+      const item = createBrowserMediaStub(file);
 
       const enrichedItem = await enrichMediaMetadata(item);
       importItem(enrichedItem);
@@ -65,13 +54,32 @@ export default function ImportButton() {
         let importedItem;
         try {
           importedItem = await importMediaThroughBackend(filePath);
+          const enrichedItem = await enrichMediaMetadata(importedItem);
+          importItem(enrichedItem);
         } catch {
-          // Fallback: keep existing import behavior if backend is unavailable.
+          // Fallback: backend unavailable. Import locally and generate timeline
+          // thumbnails via Electron main process so scrub-preview still works.
           importedItem = createLocalMediaStub(filePath);
-        }
 
-        const enrichedItem = await enrichMediaMetadata(importedItem);
-        importItem(enrichedItem);
+          if (window.desktopAPI?.createThumbnails) {
+            try {
+              const thumbs = await window.desktopAPI.createThumbnails(filePath);
+              if (thumbs.count > 0) {
+                importedItem = {
+                  ...importedItem,
+                  thumbnailDir: thumbs.thumbnailDir,
+                  thumbnailFps: thumbs.thumbnailFps,
+                };
+              }
+            } catch (thumbError) {
+              console.warn("Local thumbnail generation failed:", thumbError);
+            }
+          }
+
+          // Call enrichMediaMetadata after thumbnail generation completes to avoid I/O conflicts.
+          const enrichedItem = await enrichMediaMetadata(importedItem);
+          importItem(enrichedItem);
+        }
         return;
       } finally {
         setIsLoading(false);

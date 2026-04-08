@@ -24,26 +24,7 @@
   color: #d4d4d4;
 }
 
-.headerPlayButton {
-  padding: 6px 10px;
-  background-color: #0e639c;
-  border: none;
-  border-radius: 4px;
-  color: #fff;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.headerPlayButton:hover {
-  background-color: #1177bb;
-}
-
-.headerPlayButton:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.video {
+.frame {
   flex: 1;
   width: 100%;
   min-height: 220px;
@@ -52,13 +33,11 @@
   object-fit: contain;
 }
 
-.errorBanner {
-  margin: 8px 10px 0;
-  padding: 8px 10px;
-  border-radius: 4px;
-  background: #4a1e1e;
-  color: #ffd2d2;
-  font-size: 12px;
+.frameViewport {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  background: #000;
 }
 
 .statusBanner {

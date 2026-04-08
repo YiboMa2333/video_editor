@@ -1,224 +1,126 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { VideoControls } from './VideoControls';
-import { resolveMediaSource } from '../../services/api';
-import './VideoPlayer.css';
+import React, { useEffect, useMemo } from "react";
+import { usePlayerStore } from "../../store/usePlayerStore";
+import { useProjectStore } from "../../store/useProjectStore";
+import { mapTimelineTimeToSourceTime } from "../../utils/timelineMapping";
+import type { MediaItem } from "../../types/media";
+import { getThumbnailSrc } from "../../utils/thumbnailMapping";
+import "./VideoPlayer.css";
 
 interface VideoPlayerProps {
-  originalPath?: string;
-  proxyPath?: string;
-  isProxyReady?: boolean;
   title?: string;
+  thumbnailDir?: string;
+  thumbnailFps?: number;
+  durationSec?: number;
 }
 
+const getTimelineStart = (clip: { timelineStartSec?: number; startSec: number }): number => {
+  return clip.timelineStartSec ?? 0;
+};
+
+const getTimelineEnd = (
+  clip: { timelineStartSec?: number; timelineEndSec?: number; startSec: number; endSec: number }
+): number => {
+  if (typeof clip.timelineEndSec === "number") {
+    return clip.timelineEndSec;
+  }
+  return getTimelineStart(clip) + Math.max(0, clip.endSec - clip.startSec);
+};
+
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
-  originalPath,
-  proxyPath,
-  isProxyReady,
-  title = 'Video Preview',
+  title = "Frame Viewer",
+  thumbnailDir,
+  thumbnailFps,
+  durationSec = 0,
 }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const [playbackSource, setPlaybackSource] = useState<string | undefined>();
-  const [isPreparingPreview, setIsPreparingPreview] = useState(false);
-  const [hasTriedPreviewFallback, setHasTriedPreviewFallback] = useState(false);
-  const [hasLoadedMetadata, setHasLoadedMetadata] = useState(false);
-  const preferredPath = proxyPath && isProxyReady !== false ? proxyPath : originalPath ?? proxyPath;
-  const directSource = preferredPath ? resolveMediaSource(preferredPath) : undefined;
+  const setStoreCurrentTime = usePlayerStore((s) => s.setCurrentTime);
+  const setStoreDuration = usePlayerStore((s) => s.setDuration);
+  const isScrubbing = usePlayerStore((s) => s.isScrubbing);
+  const scrubTime = usePlayerStore((s) => s.scrubTime);
+  const currentTime = usePlayerStore((s) => s.currentTime);
 
+  const tracks = useProjectStore((s) => s.project.tracks);
+  const mediaItems = useProjectStore((s) => s.project.media);
+
+  const videoClips = useMemo(
+    () => tracks.filter((track) => track.kind === "video").flatMap((track) => track.clips),
+    [tracks],
+  );
+
+  const mediaById = useMemo(() => {
+    const byId = new Map<string, MediaItem>();
+    for (const item of mediaItems) {
+      byId.set(item.id, item);
+    }
+    return byId;
+  }, [mediaItems]);
+
+  // Display frame at current scrub position (during drag) or current playhead position
+  const displayTimelineTime = isScrubbing ? scrubTime ?? currentTime : currentTime;
+  const displayMapping = useMemo(
+    () => mapTimelineTimeToSourceTime(displayTimelineTime, videoClips),
+    [displayTimelineTime, videoClips],
+  );
+
+  const displayMedia = useMemo(() => {
+    if (displayMapping.clip) {
+      return mediaById.get(displayMapping.clip.mediaId);
+    }
+
+    if (thumbnailDir) {
+      return {
+        id: "frame-viewer-fallback",
+        name: title,
+        originalPath: "",
+        path: "",
+        thumbnailDir,
+        thumbnailFps,
+        type: "video",
+      } satisfies MediaItem;
+    }
+
+    return undefined;
+  }, [displayMapping.clip, mediaById, thumbnailDir, thumbnailFps, title]);
+
+  const frameSource = useMemo(() => {
+    if (!displayMedia) {
+      return null;
+    }
+    return getThumbnailSrc(displayMedia, displayMapping.sourceTimeSec);
+  }, [displayMedia, displayMapping.sourceTimeSec]);
+
+  // Initialize store duration
   useEffect(() => {
-    setCurrentTime(0);
-    setDuration(0);
-    setIsPlaying(false);
-    setPlaybackError(null);
-    setPlaybackSource(undefined);
-    setHasTriedPreviewFallback(false);
-    setHasLoadedMetadata(false);
-  }, [originalPath, proxyPath, isProxyReady]);
+    if (durationSec > 0) {
+      setStoreDuration(durationSec);
+    }
+  }, [durationSec, setStoreDuration]);
 
+  // Keep store currentTime in sync
   useEffect(() => {
-    const prepareSource = async () => {
-      if (!preferredPath) {
-        setPlaybackSource(undefined);
-        return;
-      }
-
-      setPlaybackSource(resolveMediaSource(preferredPath));
-    };
-
-    prepareSource();
-  }, [preferredPath]);
-
-  const attemptPreviewFallback = async () => {
-    if (!originalPath) {
-      setPlaybackError("Unable to load media.");
-      return;
-    }
-
-    if (!/^[a-zA-Z]:\\/.test(originalPath) || !window.desktopAPI?.createPreview || hasTriedPreviewFallback) {
-      setPlaybackError(
-        "This file format or codec is not supported by the embedded Chromium player."
-      );
-      return;
-    }
-
-    try {
-      setHasTriedPreviewFallback(true);
-      setIsPreparingPreview(true);
-      setPlaybackError(null);
-      const previewPath = await window.desktopAPI.createPreview(originalPath);
-      setPlaybackSource(previewPath);
-    } catch (error) {
-      setPlaybackError(
-        error instanceof Error ? error.message : "Preview generation failed."
-      );
-    } finally {
-      setIsPreparingPreview(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!originalPath || !/^[a-zA-Z]:\\/.test(originalPath) || !playbackSource) {
-      return;
-    }
-
-    if (playbackSource !== directSource || hasLoadedMetadata || hasTriedPreviewFallback || isPreparingPreview) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      const element = videoRef.current;
-      const loadedDuration = element?.duration ?? NaN;
-      const hasUsableMetadata =
-        !!element &&
-        element.readyState >= HTMLMediaElement.HAVE_METADATA &&
-        Number.isFinite(loadedDuration) &&
-        loadedDuration > 0;
-
-      if (!hasUsableMetadata) {
-        void attemptPreviewFallback();
-      }
-    }, 1500);
-
-    return () => window.clearTimeout(timer);
-  }, [originalPath, playbackSource, directSource, hasLoadedMetadata, hasTriedPreviewFallback, isPreparingPreview]);
-
-  // Update current time as video plays
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
-  };
-
-  // Update duration when metadata loads
-  const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      const loadedDuration = videoRef.current.duration;
-
-      if (Number.isFinite(loadedDuration) && loadedDuration > 0) {
-        setDuration(loadedDuration);
-        setHasLoadedMetadata(true);
-        setPlaybackError(null);
-        return;
-      }
-    }
-
-    void attemptPreviewFallback();
-  };
-
-  // Handle play/pause
-  const handlePlayPause = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        void videoRef.current.play();
-      }
-    }
-  };
-
-  // Handle seeking
-  const handleSeek = (time: number) => {
-    const element = videoRef.current;
-    if (!element) {
-      return;
-    }
-
-    const safeDuration = Number.isFinite(element.duration) && element.duration > 0
-      ? element.duration
-      : duration;
-    const nextTime = Math.min(Math.max(0, time), safeDuration || 0);
-
-    element.currentTime = nextTime;
-    setCurrentTime(nextTime);
-  };
-
-  // Handle volume change
-  const handleVolumeChange = (vol: number) => {
-    if (videoRef.current) {
-      videoRef.current.volume = vol;
-      setVolume(vol);
-    }
-  };
-
-  // Pause on video end
-  const handleEnded = () => {
-    setIsPlaying(false);
-  };
+    setStoreCurrentTime(displayTimelineTime);
+  }, [displayTimelineTime, setStoreCurrentTime]);
 
   return (
     <div className="container">
       <div className="header">
         <h3>{title}</h3>
-        <button
-          className="headerPlayButton"
-          onClick={handlePlayPause}
-          disabled={!preferredPath || isPreparingPreview}
-        >
-          {isPlaying ? "Pause" : "Play"}
-        </button>
       </div>
 
-      {preferredPath ? (
-        <>
-          {proxyPath && isProxyReady === false ? <div className="statusBanner">Generating preview...</div> : null}
-          {isPreparingPreview ? <div className="statusBanner">Generating compatible preview...</div> : null}
-          <video
-            ref={videoRef}
-            className="video"
-            src={playbackSource}
-            onTimeUpdate={handleTimeUpdate}
-            onLoadedMetadata={handleLoadedMetadata}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-            onEnded={handleEnded}
-            onError={() => {
-              void attemptPreviewFallback();
+      {frameSource ? (
+        <div className="frameViewport">
+          <img
+            className="frame"
+            src={frameSource}
+            alt={`${title} frame at ${displayTimelineTime.toFixed(2)}s`}
+            onError={(event) => {
+              (event.currentTarget as HTMLImageElement).style.visibility = "hidden";
             }}
-            controlsList="nodownload"
-          >
-            Your browser does not support HTML5 video.
-          </video>
-
-          {playbackError ? <div className="errorBanner">{playbackError}</div> : null}
-
-          <VideoControls
-            isPlaying={isPlaying}
-            onPlayPause={handlePlayPause}
-            currentTime={currentTime}
-            duration={duration}
-            onSeek={handleSeek}
-            volume={volume}
-            onVolumeChange={handleVolumeChange}
-            showPlayButton={false}
           />
-        </>
+          {isScrubbing ? <div className="statusBanner">Scrubbing with frames…</div> : null}
+        </div>
       ) : (
         <div className="placeholder">
-          <p>No video selected. Import media to preview.</p>
+          <p>No frames available. Import media to preview.</p>
         </div>
       )}
     </div>

@@ -7,6 +7,12 @@ contextBridge.exposeInMainWorld("desktopAPI", {
   createPreview: (filePath: string) => ipcRenderer.invoke("media:createPreview", filePath) as Promise<string>,
   createPreviewFromBuffer: (fileName: string, bytes: Uint8Array) =>
     ipcRenderer.invoke("media:createPreviewFromBuffer", { fileName, bytes }) as Promise<string>,
+  createThumbnails: (filePath: string) =>
+    ipcRenderer.invoke("media:createThumbnails", filePath) as Promise<{
+      thumbnailDir: string;
+      thumbnailFps: number;
+      count: number;
+    }>,
   clearCaches: () =>
     ipcRenderer.invoke("app:clearCaches") as Promise<{
       clearedDirectories: string[];

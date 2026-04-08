@@ -1,5 +1,6 @@
 import type { Clip, Track } from "../../types/timeline";
 import { TimelineClip } from "./TimelineClip";
+import { Playhead } from "./Playhead";
 
 type TimelineTrackProps = {
   track: Track;
@@ -16,18 +17,15 @@ export function TimelineTrack({
   getTimelineStart,
   getTimelineEnd,
 }: TimelineTrackProps) {
-  const safeDuration = timelineDurationSec > 0 ? timelineDurationSec : 1;
-  const playheadLeftPercent =
-    (Math.max(0, Math.min(currentTimeSec, safeDuration)) / safeDuration) * 100;
-
   return (
     <div className="timeline-track-row">
       <div className="timeline-track-label">{track.name}</div>
 
       <div className="timeline-track-lane">
-        <div
-          className="timeline-playhead timeline-lane-playhead"
-          style={{ left: `${playheadLeftPercent}%` }}
+        <Playhead
+          currentTimeSec={currentTimeSec}
+          timelineDurationSec={timelineDurationSec}
+          className="timeline-lane-playhead"
         />
 
         {track.clips.length === 0 ? <div className="timeline-track-empty">No clips yet</div> : null}

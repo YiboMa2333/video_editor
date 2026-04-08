@@ -2,7 +2,114 @@
 
 All notable project changes are listed here.
 
-## 2026-04-07
+## 2026-04-08 — Frame viewer and thumbnail optimization
+
+- **Refactored VideoPlayer component** (`apps/desktop/src/renderer/components/VideoPlayer/VideoPlayer.tsx`):
+  - Removed HTML5 video playback and play/pause controls
+  - Converted to **frame viewer mode**: displays individual frames extracted from thumbnails
+  - Frame updates in real-time as user drags the timeline seeker bar
+  - Synchronized with scrubbing state: shows frame at exact playhead position during drag
+  - Removes VideoControls integration; simplifies component lifecycle
+
+- **Fixed thumbnail generation I/O contention** (`apps/desktop/src/renderer/components/MediaBin/ImportButton.tsx`):
+  - Issue: `enrichMediaMetadata()` and `createThumbnails()` were both accessing the video file simultaneously during fallback import
+  - Solution: Call `enrichMediaMetadata()` **after** thumbnail generation completes to avoid file access conflicts
+  - Ensures video duration is properly extracted and clips are created with correct metadata
+  - Fallback import path now: `createLocalMediaStub()` → `createThumbnails()` → `enrichMediaMetadata()` → `importItem()`
+
+- **Fixed second video frame display in timeline** (`apps/desktop/src/renderer/components/Timeline/TimelineClip.tsx`):
+  - Issue: Timeline clips displayed incorrect frame positions for second and subsequent videos
+  - Root cause: Used timeline time directly instead of mapping to clip's source time
+  - Solution: Calculate source time by mapping timeline position through clip boundaries
+  - Formula: `sourceTime = clip.startSec + (ratio * (clip.endSec - clip.startSec))`
+  - Now correctly displays frames for all clips regardless of source media
+
+- **Display filename instead of mediaId on timeline** (`apps/desktop/src/renderer/components/Timeline/TimelineClip.tsx`):
+  - Changed clip label from `clip.mediaId` to `media?.name` for better UX
+  - Users now see original video filename on tracker bars instead of UUIDs
+  - Falls back to mediaId if filename unavailable
+
+- **Adaptive frame rate for long videos** (`apps/desktop/src/main/index.ts`):
+  - Added `getVideoDuration()` function using ffprobe to detect video duration
+  - Added `calculateOptimalFps()` function with adaptive frame rate based on video length:
+    - **≤ 5 min**: 1.0 fps (300 frames max)
+    - **5-30 min**: 0.5 fps (500-900 frames)
+    - **30 min to 2 hrs**: 0.2 fps (500-1440 frames, 1 frame per 5 seconds)
+    - **> 2 hrs**: 0.1 fps (~720 frames, 1 frame per 10 seconds)
+  - Automatically detects video duration and selects optimal fps during thumbnail generation
+  - Enables efficient frame generation for videos up to 2+ hours without excessive file creation
+  - Updated `createThumbnailsAsset()` to accept optional `fps` parameter (undefined triggers auto-calculation)
+  - Updated IPC handler `media:createThumbnails` to use auto-calculated fps
+
+- **Updated VideoPlayer.css**:
+  - Removed styles for video element, play button, scrub preview overlay
+  - Renamed `.videoViewport` to `.frameViewport`
+  - Renamed `.video` to `.frame` with `object-fit: contain` for thumbnail images
+  - Kept statusBanner and placeholder styles for consistency
+
+- **Updated App.tsx**:
+  - Changed VideoPlayer props from `sourcePath` to `durationSec`
+  - Now passes `durationSec`, `thumbnailDir`, `thumbnailFps` to frame viewer
+  - Displays frame-based preview instead of video playback
+
+## 2026-04-08 — Scrub-thumbnail UI with timeline mapping
+
+- Created scrub preview system enabling frame display during timeline drag
+- Implemented `ScrubPreview.tsx` component showing thumbnail overlay during scrub mode
+- Created `usePlayerStore.ts` Zustand store for global player state:
+  - `isScrubbing`, `scrubTime`, `seekRequestTime` for drag-based scrubbing
+  - `currentTime`, `duration`, `isPlaying` for playback state
+  - `setIsScrubbing()`, `setScrubTime()`, `requestSeek()`, `clearSeekRequest()` actions
+- Created `timelineMapping.ts` utility:
+  - `mapTimelineTimeToSourceTime()` converts timeline coordinates to source media time
+  - Handles clip boundaries and safe fallback for gaps
+- Created `thumbnailMapping.ts` utility:
+  - `getThumbnailIndex()`, `getThumbnailUrl()`, `getThumbnailSrc()` for frame lookup
+- Integrated timeline seeker with scrub state:
+  - `Timeline.tsx` pointer handlers update scrubTime on drag
+  - `SeekerBar.tsx` new component for timeline-level seeking
+  - One-shot seek on release via `seekRequestTime` effect in VideoPlayer
+- Removed proxy-related code (proxyPath, isProxyReady fields) from renderer
+- Added Electron IPC handler for `media:createThumbnails` to generate frames locally when backend unavailable
+- Integrated desktop thumbnail generation fallback into import flow
+
+## 2026-04-08 — Media playback compatibility fix (Chromium + fallback convert)
+
+- Updated `apps/desktop/src/renderer/components/MediaBin/ImportButton.tsx`:
+  - Desktop import now prefers `window.desktopAPI.openMediaFile()` to keep the original local file path.
+  - Browser file input remains fallback-only.
+- Updated `apps/desktop/src/renderer/components/VideoPlayer/VideoPlayer.tsx`:
+  - Playback logic changed to: try original source first.
+  - If Chromium decode fails (`onError`) or metadata stalls (black screen / `0.00/0.00`), trigger conversion fallback once.
+  - Added metadata watchdog to auto-fallback when no usable metadata is loaded.
+- Updated `apps/desktop/src/main/index.ts` conversion output behavior:
+  - Converted files are written to `D:\AI_video_editor_project\converted-videos`.
+  - Output file name format changed to `converted_{filename}.mp4`.
+  - Sanitizes filename for Windows-invalid characters.
+  - Removed stale-output reuse; fallback conversion now regenerates output each time to avoid old incompatible files.
+- Updated `apps/desktop/src/main/index.ts` FFmpeg fallback command to Chromium-safe MP4:
+
+```bash
+ffmpeg -i input.ext \
+  -c:v libx264 \
+  -profile:v baseline \
+  -level 3.0 \
+  -pix_fmt yuv420p \
+  -movflags +faststart \
+  -c:a aac \
+  -ar 44100 \
+  -ac 2 \
+  -b:a 128k \
+  converted_{filename}.mp4
+```
+
+- Updated `apps/desktop/src/main/index.ts` local media transport:
+  - Registered `local-media://` via `protocol.registerSchemesAsPrivileged(...)` with stream-enabled privileges.
+  - This fixes custom-protocol playback handling for converted files in Electron/Chromium.
+- Updated `apps/desktop/src/main/index.ts` path resolution:
+  - Added repo-root discovery (instead of relying on `process.cwd()`), preventing wrong output folder resolution during dev runs.
+
+## 2026-04-08 — Video player (Task 3.3)
 
 - Created monorepo root folders:
   - `apps/`

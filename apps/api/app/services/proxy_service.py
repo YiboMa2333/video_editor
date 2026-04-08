@@ -38,25 +38,41 @@ def generate_proxy_video(input_path: str, output_path: str) -> str:
         "-i",
         str(input_file),
         "-vf",
-        "scale=640:-1",
+        # scale=640:-2 forces the computed height to be rounded to the nearest
+        # even number. libx264 requires width AND height to be divisible by 2;
+        # using -1 can produce an odd height for portrait or non-standard aspect
+        # ratios and causes FFmpeg to abort with "height not divisible by 2".
+        "scale=640:-2",
         "-c:v",
         "libx264",
         "-preset",
         "veryfast",
+        # crf 28 is slightly higher quality than 30; stays well within
+        # Chromium's supported H.264 profile/level range.
         "-crf",
-        "30",
+        "28",
         "-g",
         "12",
         "-pix_fmt",
+        # yuv420p is the only chroma subsampling guaranteed to work in all
+        # Chromium/CEF builds (yuv444p and yuv422p are not universally decoded).
         "yuv420p",
         "-c:a",
         "aac",
+        "-b:a",
+        "128k",
         "-movflags",
+        # +faststart rewrites the moov atom to the beginning of the file so the
+        # browser can start decoding before the full download completes.
         "+faststart",
         str(output_file),
     ]
 
-    logger.info("Proxy generation started", extra={"input": str(input_file), "output": str(output_file)})
+    logger.info(
+        "Proxy generation started: %s",
+        " ".join(command),
+        extra={"input": str(input_file), "output": str(output_file)},
+    )
 
     try:
         completed = subprocess.run(

@@ -218,6 +218,125 @@ async function createPreviewFromBuffer(fileName: string, bytes: Uint8Array) {
   return createPreviewAsset(sourcePath, fileName);
 }
 
+async function getVideoDuration(filePath: string): Promise<number> {
+  if (!ffmpegPath) {
+    throw new Error("ffmpeg binary is unavailable");
+  }
+
+  return new Promise((resolve, reject) => {
+    const ffmpeg = spawn(ffmpegPath, ["-v", "quiet", "-print_format", "json", "-show_format", "-i", filePath], {
+      windowsHide: true,
+    });
+
+    let stdout = "";
+    ffmpeg.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    ffmpeg.on("close", (code) => {
+      if (code !== 0) {
+        resolve(0); // Default to 0 if duration cannot be determined
+        return;
+      }
+
+      try {
+        const json = JSON.parse(stdout) as { format?: { duration?: string | number } };
+        const duration = json.format?.duration;
+        const durationSec = typeof duration === "string" ? parseFloat(duration) : typeof duration === "number" ? duration : 0;
+        resolve(Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 0);
+      } catch {
+        resolve(0);
+      }
+    });
+
+    ffmpeg.on("error", () => resolve(0));
+  });
+}
+
+function calculateOptimalFps(durationSec: number): number {
+  if (durationSec <= 0) {
+    return 1.0; // Default fps
+  }
+
+  // Adaptive fps based on duration to keep frame count reasonable
+  // Target: 500-3000 frames per video
+  if (durationSec < 300) {
+    // <= 5 min: 1 frame per second (300 frames max)
+    return 1.0;
+  } else if (durationSec < 1800) {
+    // <= 30 min: 1 frame per 2 seconds (900 frames max)
+    return 0.5;
+  } else if (durationSec < 7200) {
+    // <= 2 hours: 1 frame per 5 seconds (1440 frames max)
+    return 0.2;
+  } else {
+    // > 2 hours: 1 frame per 10 seconds (720 frames max for 2 hours)
+    return 0.1;
+  }
+}
+
+async function createThumbnailsAsset(filePath: string, fps?: number) {
+  if (!ffmpegPath) {
+    throw new Error("ffmpeg binary is unavailable");
+  }
+
+  // If fps not specified, determine optimal fps based on video duration
+  let safeFps = fps;
+  if (!Number.isFinite(safeFps) || safeFps === undefined) {
+    const durationSec = await getVideoDuration(filePath);
+    safeFps = calculateOptimalFps(durationSec);
+  } else {
+    safeFps = Math.max(0.1, safeFps);
+  }
+
+  const hash = createHash("sha1").update(filePath).digest("hex").slice(0, 16);
+  const thumbnailDir = path.join(repoRoot, "runtime", "cache", "thumbnails", hash);
+  await mkdir(thumbnailDir, { recursive: true });
+
+  const outputPattern = path.join(thumbnailDir, "thumb_%04d.jpg");
+
+  await new Promise<void>((resolve, reject) => {
+    const ffmpeg = spawn(
+      ffmpegPath,
+      [
+        "-y",
+        "-i",
+        filePath,
+        "-vf",
+        `fps=${safeFps}`,
+        "-q:v",
+        "2",
+        outputPattern,
+      ],
+      { windowsHide: true }
+    );
+
+    let stderr = "";
+    ffmpeg.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    ffmpeg.on("error", reject);
+    ffmpeg.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(stderr || `ffmpeg exited with code ${code}`));
+    });
+  });
+
+  const files = await readdir(thumbnailDir);
+  const count = files.filter((name) => /^thumb_\d+\.jpg$/i.test(name)).length;
+
+  return {
+    thumbnailDir,
+    thumbnailFps: safeFps,
+    count,
+  };
+}
+
 async function clearDirectoryContents(directoryPath: string, result: ClearCacheResult) {
   try {
     await mkdir(directoryPath, { recursive: true });
@@ -346,6 +465,10 @@ app.whenReady().then(() => {
       return createPreviewFromBuffer(payload.fileName, payload.bytes);
     }
   );
+
+  ipcMain.handle("media:createThumbnails", async (_event, filePath: string) => {
+    return createThumbnailsAsset(filePath);
+  });
 
   ipcMain.handle("app:clearCaches", async () => {
     return clearAppCaches();

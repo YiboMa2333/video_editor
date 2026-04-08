@@ -3,10 +3,10 @@ import type { MediaItem } from "../types/media";
 type MediaImportResponse = {
   id: string;
   originalPath: string;
-  proxyPath?: string | null;
+  thumbnailDir?: string | null;
+  thumbnailFps?: number | null;
   duration?: number;
   hasAudio?: boolean;
-  isProxyReady?: boolean;
 };
 
 function detectMediaType(name: string): MediaItem["type"] {
@@ -38,9 +38,7 @@ export function createLocalMediaStub(filePath: string): MediaItem {
     id: crypto.randomUUID(),
     name,
     originalPath: filePath,
-    proxyPath: undefined,
     path: filePath,
-    isProxyReady: false,
     type: detectMediaType(name),
   };
 }
@@ -50,9 +48,7 @@ export function createBrowserMediaStub(file: File): MediaItem {
     id: crypto.randomUUID(),
     name: file.name,
     originalPath: URL.createObjectURL(file),
-    proxyPath: undefined,
     path: URL.createObjectURL(file),
-    isProxyReady: false,
     type: detectMediaType(file.name),
   };
 }
@@ -75,20 +71,16 @@ export async function importMediaThroughBackend(originalPath: string): Promise<M
     id: payload.id,
     name,
     originalPath: payload.originalPath,
-    proxyPath: payload.proxyPath ?? undefined,
-    path: payload.proxyPath ?? payload.originalPath,
-    isProxyReady: payload.isProxyReady ?? Boolean(payload.proxyPath),
+    thumbnailDir: payload.thumbnailDir ?? undefined,
+    thumbnailFps: payload.thumbnailFps ?? undefined,
+    path: payload.originalPath,
     type: detectMediaType(name),
     durationSec: payload.duration,
     hasAudio: payload.hasAudio,
   };
 }
 
-export function getPreferredPreviewPath(item: Pick<MediaItem, "proxyPath" | "originalPath" | "path" | "isProxyReady">): string | undefined {
-  if (item.proxyPath && item.isProxyReady !== false) {
-    return item.proxyPath;
-  }
-
+export function getPreferredPreviewPath(item: Pick<MediaItem, "originalPath" | "path">): string | undefined {
   return item.originalPath || item.path;
 }
 

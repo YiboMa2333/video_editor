@@ -154,10 +154,10 @@ export default function App() {
           <div className="preview-column">
             <div className="preview-scroll-area">
               <VideoPlayer
-                originalPath={selectedMedia?.originalPath ?? selectedMedia?.path}
-                proxyPath={selectedMedia?.proxyPath}
-                isProxyReady={selectedMedia?.isProxyReady}
-                title={selectedMedia?.name || "Video Preview"}
+                durationSec={selectedMedia?.durationSec}
+                thumbnailDir={selectedMedia?.thumbnailDir}
+                thumbnailFps={selectedMedia?.thumbnailFps}
+                title={selectedMedia?.name || "Frame Viewer"}
               />
               <Timeline />
             </div>

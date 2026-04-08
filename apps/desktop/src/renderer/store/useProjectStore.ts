@@ -105,15 +105,14 @@ const stripImportedMedia = (project: Project): Project => ({
 
 const normalizeMediaItem = (item: MediaItem): MediaItem => {
   const originalPath = item.originalPath || item.path;
-  const proxyPath = item.proxyPath;
-  const path = proxyPath && item.isProxyReady !== false ? proxyPath : originalPath;
+  const path = originalPath;
 
   return {
     ...item,
     originalPath,
-    proxyPath,
+    thumbnailDir: item.thumbnailDir,
+    thumbnailFps: item.thumbnailFps,
     path,
-    isProxyReady: item.isProxyReady ?? Boolean(proxyPath),
   };
 };
 

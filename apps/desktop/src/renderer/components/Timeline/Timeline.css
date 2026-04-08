@@ -86,9 +86,37 @@
   padding: 0 8px;
   min-width: 8px;
   z-index: 1;
+  overflow: hidden;
+}
+
+.timeline-clip-thumbnails {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.timeline-clip-thumb {
+  flex: 1 1 auto;
+  width: 0;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.82;
+  pointer-events: none;
+}
+
+.timeline-clip-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(12, 22, 36, 0.16) 0%, rgba(8, 16, 28, 0.28) 100%);
+  pointer-events: none;
 }
 
 .timeline-clip-label {
+  position: relative;
+  z-index: 1;
   color: #f4f7fc;
   font-size: 11px;
   white-space: nowrap;
@@ -110,6 +138,18 @@
   top: 0;
   bottom: 0;
   z-index: 2;
+}
+
+.timeline-seeker {
+  display: flex;
+  align-items: center;
+  padding: 2px 4px 0;
+}
+
+.timeline-seeker-input {
+  width: 100%;
+  accent-color: #ff5d5d;
+  cursor: pointer;
 }
 
 @media (max-width: 980px) {

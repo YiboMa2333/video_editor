@@ -13,6 +13,8 @@ class MediaResponse(BaseModel):
     id: str
     originalPath: str
     proxyPath: Optional[str] = None
+    thumbnailDir: Optional[str] = None
+    thumbnailFps: Optional[float] = None
     duration: Optional[float] = None
     hasAudio: Optional[bool] = None
     isProxyReady: bool = False
