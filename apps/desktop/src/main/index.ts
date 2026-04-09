@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, net, protocol } from "electron";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
@@ -79,6 +79,61 @@ type ClearCacheResult = {
   failedPaths: Array<{ path: string; error: string }>;
 };
 
+type ExportMode = "single" | "clips";
+
+type ExportClip = {
+  id: string;
+  mediaId: string;
+  startSec: number;
+  endSec: number;
+  timelineStart?: number;
+  timelineEnd?: number;
+  timelineStartSec?: number;
+  timelineEndSec?: number;
+};
+
+type ExportTrack = {
+  kind: "video" | "audio" | "subtitle";
+  clips: ExportClip[];
+};
+
+type ExportMedia = {
+  id: string;
+  originalPath?: string;
+  path?: string;
+};
+
+type ExportProjectPayload = {
+  name: string;
+  media: ExportMedia[];
+  tracks: ExportTrack[];
+};
+
+type ExportTimelinePayload = {
+  mode: ExportMode;
+  outputDir: string;
+  project: ExportProjectPayload;
+};
+
+type ExportTimelineResult = {
+  mode: ExportMode;
+  outputDir: string;
+  outputs: string[];
+};
+
+type ExportProgressPayload = {
+  mode: ExportMode;
+  percent: number;
+  message: string;
+};
+
+type ExportExecutionContext = {
+  cancelled: boolean;
+  activeProcess: ChildProcessWithoutNullStreams | null;
+};
+
+const EXPORT_CANCELLED_MESSAGE = "Export cancelled by user.";
+
 function resolveUserDataPath() {
   const requestedPath = process.env.AI_VIDEO_EDITOR_CACHE_DIR ?? defaultCacheRoot;
   const probeDir = path.join(requestedPath, `.write-test-${process.pid}`);
@@ -125,6 +180,7 @@ const ffmpegPath = resolveFfmpegPath();
 
 let mainWindow: BrowserWindow | null = null;
 const mpvService = new MpvService();
+const exportContexts = new Map<number, ExportExecutionContext>();
 let previewHostRelativeBounds: { x: number; y: number; width: number; height: number } | null = null;
 let previewHostOwnerWindow: BrowserWindow | null = null;
 let removeOverlayTrackingListeners: (() => void) | null = null;
@@ -193,6 +249,251 @@ function toSafeOutputBaseName(fileName: string) {
   const parsedName = path.parse(fileName);
   const baseName = parsedName.name || "video";
   return baseName.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_");
+}
+
+function getClipTimelineStart(clip: ExportClip) {
+  if (typeof clip.timelineStart === "number") {
+    return clip.timelineStart;
+  }
+
+  if (typeof clip.timelineStartSec === "number") {
+    return clip.timelineStartSec;
+  }
+
+  return 0;
+}
+
+function getOrderedVideoExportClips(project: ExportProjectPayload) {
+  const videoTrack = project.tracks.find((track) => track.kind === "video");
+  if (!videoTrack) {
+    return [] as ExportClip[];
+  }
+
+  return [...videoTrack.clips].sort((a, b) => getClipTimelineStart(a) - getClipTimelineStart(b));
+}
+
+function getSourcePath(media: ExportMedia) {
+  return media.originalPath || media.path || "";
+}
+
+function ensureExportNotCancelled(context?: ExportExecutionContext) {
+  if (context?.cancelled) {
+    throw new Error(EXPORT_CANCELLED_MESSAGE);
+  }
+}
+
+async function runFfmpeg(args: string[], context?: ExportExecutionContext) {
+  if (!ffmpegPath) {
+    throw new Error("ffmpeg binary is unavailable");
+  }
+
+  ensureExportNotCancelled(context);
+
+  await new Promise<void>((resolve, reject) => {
+    const ffmpeg = spawn(ffmpegPath, args, { windowsHide: true });
+    if (context) {
+      context.activeProcess = ffmpeg;
+    }
+
+    let stderr = "";
+    ffmpeg.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    ffmpeg.on("error", reject);
+    ffmpeg.on("close", (code) => {
+      if (context) {
+        context.activeProcess = null;
+      }
+
+      if (context?.cancelled) {
+        reject(new Error(EXPORT_CANCELLED_MESSAGE));
+        return;
+      }
+
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(stderr || `ffmpeg exited with code ${code}`));
+    });
+  });
+}
+
+async function exportClipSegment(
+  sourcePath: string,
+  clip: ExportClip,
+  outputPath: string,
+  context?: ExportExecutionContext,
+) {
+  const sourceStart = Math.max(0, clip.startSec);
+  const sourceEnd = Math.max(sourceStart, clip.endSec);
+  const duration = Math.max(0.01, sourceEnd - sourceStart);
+
+  await runFfmpeg([
+    "-y",
+    "-ss",
+    String(sourceStart),
+    "-t",
+    String(duration),
+    "-i",
+    sourcePath,
+    "-map",
+    "0:v:0",
+    "-map",
+    "0:a:0?",
+    "-c:v",
+    "libx264",
+    "-profile:v",
+    "baseline",
+    "-level",
+    "3.0",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    "-c:a",
+    "aac",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    "-b:a",
+    "128k",
+    outputPath,
+  ], context);
+}
+
+async function exportTimeline(
+  payload: ExportTimelinePayload,
+  onProgress?: (progress: ExportProgressPayload) => void,
+  context?: ExportExecutionContext,
+): Promise<ExportTimelineResult> {
+  if (!payload.outputDir) {
+    throw new Error("Missing export output directory.");
+  }
+
+  await mkdir(payload.outputDir, { recursive: true });
+
+  const orderedClips = getOrderedVideoExportClips(payload.project);
+  if (orderedClips.length === 0) {
+    throw new Error("No video clips available to export.");
+  }
+
+  const mediaById = new Map(payload.project.media.map((item) => [item.id, item]));
+
+  const clipSources = orderedClips.map((clip) => {
+    const media = mediaById.get(clip.mediaId);
+    if (!media) {
+      throw new Error(`Missing media for clip ${clip.id}.`);
+    }
+
+    const sourcePath = getSourcePath(media);
+    if (!sourcePath || !existsSync(sourcePath)) {
+      throw new Error(`Source media not found for clip ${clip.id}: ${sourcePath || "(empty path)"}`);
+    }
+
+    return { clip, sourcePath };
+  });
+
+  const reportProgress = (percent: number, message: string) => {
+    onProgress?.({
+      mode: payload.mode,
+      percent: Math.max(0, Math.min(100, Math.round(percent))),
+      message,
+    });
+  };
+
+  reportProgress(0, "Starting export");
+
+  if (payload.mode === "clips") {
+    const outputs: string[] = [];
+    const total = clipSources.length;
+
+    for (let i = 0; i < clipSources.length; i += 1) {
+      ensureExportNotCancelled(context);
+      const outputPath = path.join(payload.outputDir, `clip ${i + 1}.mp4`);
+      await exportClipSegment(clipSources[i].sourcePath, clipSources[i].clip, outputPath, context);
+      outputs.push(outputPath);
+      reportProgress(((i + 1) / total) * 100, `Exporting clips ${i + 1}/${total}`);
+    }
+
+    reportProgress(100, "Export complete");
+
+    return {
+      mode: payload.mode,
+      outputDir: payload.outputDir,
+      outputs,
+    };
+  }
+
+  const tempDir = path.join(payload.outputDir, `.ai-video-editor-export-tmp-${Date.now()}`);
+  await mkdir(tempDir, { recursive: true });
+
+  try {
+    const segmentPaths: string[] = [];
+    const totalSteps = clipSources.length + 1;
+
+    for (let i = 0; i < clipSources.length; i += 1) {
+      ensureExportNotCancelled(context);
+      const segmentPath = path.join(tempDir, `segment_${String(i + 1).padStart(4, "0")}.mp4`);
+      await exportClipSegment(clipSources[i].sourcePath, clipSources[i].clip, segmentPath, context);
+      segmentPaths.push(segmentPath);
+      reportProgress(((i + 1) / totalSteps) * 100, `Rendering segment ${i + 1}/${clipSources.length}`);
+    }
+
+    const concatListPath = path.join(tempDir, "concat.txt");
+    const concatLines = segmentPaths
+      .map((segmentPath) => `file '${segmentPath.replace(/'/g, "'\\''")}'`)
+      .join("\n");
+
+    await writeFile(concatListPath, `${concatLines}\n`, "utf8");
+
+    const mergedOutputPath = path.join(
+      payload.outputDir,
+      `${toSafeOutputBaseName(payload.project.name || "timeline")}_merged.mp4`,
+    );
+
+    await runFfmpeg([
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      concatListPath,
+      "-c:v",
+      "libx264",
+      "-profile:v",
+      "baseline",
+      "-level",
+      "3.0",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-c:a",
+      "aac",
+      "-ar",
+      "44100",
+      "-ac",
+      "2",
+      "-b:a",
+      "128k",
+      mergedOutputPath,
+    ], context);
+
+    reportProgress(100, "Merging complete");
+
+    return {
+      mode: payload.mode,
+      outputDir: payload.outputDir,
+      outputs: [mergedOutputPath],
+    };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 function getConvertedOutputPath(fileName: string) {
@@ -487,6 +788,19 @@ app.whenReady().then(() => {
     return result.filePaths[0];
   });
 
+  ipcMain.handle("dialog:selectExportFolder", async () => {
+    const result = await dialog.showOpenDialog({
+      title: "Select Export Folder",
+      properties: ["openDirectory", "createDirectory"],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    return result.filePaths[0];
+  });
+
   ipcMain.handle("media:createPreview", async (_event, filePath: string) => {
     return createPreviewAsset(filePath);
   });
@@ -504,6 +818,43 @@ app.whenReady().then(() => {
 
   ipcMain.handle("app:clearCaches", async () => {
     return clearAppCaches();
+  });
+
+  ipcMain.handle("export:timeline", async (event, payload: ExportTimelinePayload) => {
+    const senderId = event.sender.id;
+    const context: ExportExecutionContext = {
+      cancelled: false,
+      activeProcess: null,
+    };
+
+    exportContexts.set(senderId, context);
+
+    try {
+      return await exportTimeline(
+        payload,
+        (progress) => {
+          event.sender.send("export:progress", progress);
+        },
+        context,
+      );
+    } finally {
+      exportContexts.delete(senderId);
+    }
+  });
+
+  ipcMain.handle("export:cancel", async (event) => {
+    const context = exportContexts.get(event.sender.id);
+    if (!context) {
+      return { ok: false, message: "No active export to cancel." };
+    }
+
+    context.cancelled = true;
+
+    if (context.activeProcess && !context.activeProcess.killed) {
+      context.activeProcess.kill();
+    }
+
+    return { ok: true };
   });
 
   ipcMain.handle("mpv:status", () => {

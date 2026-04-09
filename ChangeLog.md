@@ -33,3 +33,22 @@ This file is intentionally kept as a pointer so changelog updates stay in one pl
 	- Shared geometry computation used for both attach and bounds updates.
 	- Keeps pseudo-embedded overlay centered and sized for preview viewport.
 - Added preview action-row/button styling and disabled/hover states for reactivation control.
+
+## 2026-04-10 - Export workflow completion (folder picker, progress, and cancellation)
+
+- Implemented timeline export feature in desktop main process with two output modes:
+	- `single`: exports one merged timeline video in clip order.
+	- `clips`: exports each timeline clip as individual files (`clip 1.mp4`, `clip 2.mp4`, ...).
+- Added export folder selection flow:
+	- Added native directory picker handler for selecting export destination before running export.
+- Added real-time export progress updates:
+	- Export now emits percent-based progress events (for both merged and per-clip modes).
+	- Renderer displays status in the controls panel as `Exporting... N%`.
+- Added export completion details in UI notice:
+	- After reaching 100%, UI now shows export folder path and the exact file names generated.
+- Added cancellable export support:
+	- Main process now tracks active export context and running ffmpeg child process.
+	- Added `export:cancel` IPC route to request cancellation.
+	- Active ffmpeg process is terminated on cancel request and renderer shows `Export cancelled.`.
+- Updated preload bridge and renderer typings:
+	- Exposed `selectExportFolder`, `exportTimeline`, `onExportProgress`, and `cancelExport` in `window.desktopAPI`.

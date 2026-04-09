@@ -4,6 +4,7 @@ console.log("Preload script loading...");
 
 contextBridge.exposeInMainWorld("desktopAPI", {
   openMediaFile: () => ipcRenderer.invoke("dialog:openMediaFile") as Promise<string | null>,
+  selectExportFolder: () => ipcRenderer.invoke("dialog:selectExportFolder") as Promise<string | null>,
   createPreview: (filePath: string) => ipcRenderer.invoke("media:createPreview", filePath) as Promise<string>,
   createPreviewFromBuffer: (fileName: string, bytes: Uint8Array) =>
     ipcRenderer.invoke("media:createPreviewFromBuffer", { fileName, bytes }) as Promise<string>,
@@ -18,6 +19,46 @@ contextBridge.exposeInMainWorld("desktopAPI", {
       clearedDirectories: string[];
       failedPaths: Array<{ path: string; error: string }>;
     }>,
+  exportTimeline: (payload: {
+    mode: "single" | "clips";
+    outputDir: string;
+    project: {
+      name: string;
+      media: Array<{ id: string; originalPath?: string; path?: string }>;
+      tracks: Array<{
+        kind: "video" | "audio" | "subtitle";
+        clips: Array<{
+          id: string;
+          mediaId: string;
+          startSec: number;
+          endSec: number;
+          timelineStart?: number;
+          timelineEnd?: number;
+          timelineStartSec?: number;
+          timelineEndSec?: number;
+        }>;
+      }>;
+    };
+  }) =>
+    ipcRenderer.invoke("export:timeline", payload) as Promise<{
+      mode: "single" | "clips";
+      outputDir: string;
+      outputs: string[];
+    }>,
+  cancelExport: () =>
+    ipcRenderer.invoke("export:cancel") as Promise<{ ok: boolean; message?: string }>,
+  onExportProgress: (listener: (payload: { mode: "single" | "clips"; percent: number; message: string }) => void) => {
+    const channel = "export:progress";
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: { mode: "single" | "clips"; percent: number; message: string }) => {
+      listener(payload);
+    };
+
+    ipcRenderer.on(channel, wrapped);
+
+    return () => {
+      ipcRenderer.removeListener(channel, wrapped);
+    };
+  },
 });
 
 contextBridge.exposeInMainWorld("mpv", {

@@ -74,6 +74,14 @@
   font-weight: 600;
 }
 
+.editor-controls-export-notice {
+  grid-column: 1 / -1;
+  color: #b9c8da;
+  font-size: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+}
+
 @media (max-width: 1200px) {
   .editor-controls-panel {
     grid-template-columns: 1fr;

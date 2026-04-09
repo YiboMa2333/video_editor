@@ -4,6 +4,7 @@ declare global {
   interface Window {
     desktopAPI: {
       openMediaFile: () => Promise<string | null>;
+      selectExportFolder: () => Promise<string | null>;
       createPreview: (filePath: string) => Promise<string>;
       createPreviewFromBuffer: (fileName: string, bytes: Uint8Array) => Promise<string>;
       createThumbnails: (filePath: string) => Promise<{
@@ -15,6 +16,33 @@ declare global {
         clearedDirectories: string[];
         failedPaths: Array<{ path: string; error: string }>;
       }>;
+      exportTimeline: (payload: {
+        mode: "single" | "clips";
+        outputDir: string;
+        project: {
+          name: string;
+          media: Array<{ id: string; originalPath?: string; path?: string }>;
+          tracks: Array<{
+            kind: "video" | "audio" | "subtitle";
+            clips: Array<{
+              id: string;
+              mediaId: string;
+              startSec: number;
+              endSec: number;
+              timelineStart?: number;
+              timelineEnd?: number;
+              timelineStartSec?: number;
+              timelineEndSec?: number;
+            }>;
+          }>;
+        };
+      }) => Promise<{
+        mode: "single" | "clips";
+        outputDir: string;
+        outputs: string[];
+      }>;
+      cancelExport: () => Promise<{ ok: boolean; message?: string }>;
+      onExportProgress: (listener: (payload: { mode: "single" | "clips"; percent: number; message: string }) => void) => () => void;
     };
     mpv: {
       getStatus: () => Promise<{
