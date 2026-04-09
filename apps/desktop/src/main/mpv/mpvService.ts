@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createConnection, type Socket } from "node:net";
 import { existsSync } from "node:fs";
+import { getMpvPath, getDetailedMpvPath } from "../paths";
 
 export type MpvStatus = {
   available: boolean;
@@ -46,7 +47,9 @@ export class MpvService {
 
   constructor() {
     this.ipcPath = process.env.AI_VIDEO_EDITOR_MPV_PIPE || DEFAULT_WINDOWS_PIPE;
-    this.mpvBinaryPath = this.resolveMpvBinaryPath();
+    const mpvResolver = getDetailedMpvPath();
+    this.mpvBinaryPath = mpvResolver.path;
+    console.log("[mpv] resolved binary from", mpvResolver.source);
   }
 
   getStatus(): MpvStatus {
@@ -369,29 +372,5 @@ export class MpvService {
 
   private formatGeometry(bounds: MpvOverlayHostConfig["bounds"]): string {
     return `${Math.max(16, Math.round(bounds.width))}x${Math.max(16, Math.round(bounds.height))}+${Math.max(0, Math.round(bounds.x))}+${Math.max(0, Math.round(bounds.y))}`;
-  }
-
-  private resolveMpvBinaryPath(): string {
-    const envPath = process.env.AI_VIDEO_EDITOR_MPV_PATH;
-    if (envPath && existsSync(envPath)) {
-      return envPath;
-    }
-
-    if (process.platform === "win32") {
-      const windowsCandidates = [
-        "D:\\project_tools\\mpv\\mpv.exe",
-        "D:\\AI_video_editor_project\\_runtime_cache\\tools\\mpv\\mpv.exe",
-        "C:\\Program Files\\MPV Player\\mpv.exe",
-      ];
-
-      for (const candidate of windowsCandidates) {
-        if (existsSync(candidate)) {
-          console.log("[mpv] using discovered executable", { candidate });
-          return candidate;
-        }
-      }
-    }
-
-    return "mpv";
   }
 }

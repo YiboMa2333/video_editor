@@ -7,6 +7,15 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { MpvService } from "./mpv/mpvService";
+import {
+  getRepoRoot,
+  getProjectRoot,
+  getCacheDir,
+  getConvertedVideosDir,
+  getRuntimeCacheThumbnailsDir,
+  getFfmpegPath,
+  getPathsSummary,
+} from "./paths";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -21,58 +30,14 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-function isRepoRoot(candidatePath: string) {
-  const workspaceFile = path.join(candidatePath, "pnpm-workspace.yaml");
-  if (existsSync(workspaceFile)) {
-    return true;
-  }
-
-  const packageJsonPath = path.join(candidatePath, "package.json");
-  if (!existsSync(packageJsonPath)) {
-    return false;
-  }
-
-  try {
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { name?: string };
-    return packageJson.name === "ai-video-editor";
-  } catch {
-    return false;
-  }
-}
-
-function findRepoRoot() {
-  const searchRoots = [process.cwd(), __dirname];
-
-  for (const startPath of searchRoots) {
-    let currentPath = startPath;
-
-    while (true) {
-      if (isRepoRoot(currentPath)) {
-        return currentPath;
-      }
-
-      const parentPath = path.dirname(currentPath);
-      if (parentPath === currentPath) {
-        break;
-      }
-      currentPath = parentPath;
-    }
-  }
-
-  return path.resolve(__dirname, "../../..");
-}
-
-const repoRoot = findRepoRoot();
-const projectRoot = path.resolve(repoRoot, "..");
-const defaultCacheRoot =
-  process.platform === "win32"
-    ? "D:\\video_editor_cache\\@ai-video-editor\\desktop"
-    : path.join(projectRoot, ".ai-video-editor-cache");
-const fallbackCacheRoot = path.join(projectRoot, "_runtime_cache", "desktop-user-data");
-const convertedVideoDir = path.join(projectRoot, "converted-videos");
-const legacyConvertedVideoDir = path.join(repoRoot, "apps", "converted-videos");
+// Log resolved paths at startup for debugging
+const pathsSummary = getPathsSummary();
+console.log("[startup] Resolved paths:");
+console.log(`  Repo Root: ${pathsSummary.repoRoot}`);
+console.log(`  Cache Dir: ${pathsSummary.cacheDir}`);
+console.log(`  Converted Videos: ${pathsSummary.convertedVideosDir}`);
+console.log(`  mpv: ${pathsSummary.mpv.source}${pathsSummary.mpv.exists ? " ✓" : " (not found yet)"}`);
+console.log(`  FFmpeg: ${pathsSummary.ffmpeg.path ? "✓" : "⚠ Not bundled yet (will be on first use)"}`);
 
 type ClearCacheResult = {
   clearedDirectories: string[];
@@ -134,49 +99,13 @@ type ExportExecutionContext = {
 
 const EXPORT_CANCELLED_MESSAGE = "Export cancelled by user.";
 
-function resolveUserDataPath() {
-  const requestedPath = process.env.AI_VIDEO_EDITOR_CACHE_DIR ?? defaultCacheRoot;
-  const probeDir = path.join(requestedPath, `.write-test-${process.pid}`);
-
-  try {
-    mkdirSync(requestedPath, { recursive: true });
-    mkdirSync(probeDir);
-    rmSync(probeDir, { recursive: true, force: true });
-    return requestedPath;
-  } catch (error) {
-    mkdirSync(fallbackCacheRoot, { recursive: true });
-    console.warn(
-      `Using fallback userData path because ${requestedPath} is not writable: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-    return fallbackCacheRoot;
-  }
-}
-
-const cacheRoot = resolveUserDataPath();
+// Initialize cache directory (resolved via paths.ts)
+const cacheRoot = getCacheDir();
+const convertedVideoDir = getConvertedVideosDir();
+const ffmpegPath = getFfmpegPath();
+const legacyConvertedVideoDir = path.join(getProjectRoot(), "apps", "converted-videos");
 
 app.setPath("userData", cacheRoot);
-
-function resolveFfmpegPath() {
-  const candidates = [
-    path.join(process.cwd(), "package.json"),
-    path.join(process.cwd(), "apps", "desktop", "package.json"),
-  ];
-
-  for (const packageJsonPath of candidates) {
-    try {
-      const runtimeRequire = createRequire(packageJsonPath);
-      return runtimeRequire("ffmpeg-static") as string | null;
-    } catch {
-      // Try the next likely workspace location.
-    }
-  }
-
-  return null;
-}
-
-const ffmpegPath = resolveFfmpegPath();
 
 let mainWindow: BrowserWindow | null = null;
 const mpvService = new MpvService();
@@ -651,7 +580,7 @@ async function createThumbnailsAsset(filePath: string, fps?: number) {
   }
 
   const hash = createHash("sha1").update(filePath).digest("hex").slice(0, 16);
-  const thumbnailDir = path.join(repoRoot, "runtime", "cache", "thumbnails", hash);
+  const thumbnailDir = path.join(getRuntimeCacheThumbnailsDir(), hash);
   await mkdir(thumbnailDir, { recursive: true });
 
   const outputPattern = path.join(thumbnailDir, "thumb_%04d.jpg");

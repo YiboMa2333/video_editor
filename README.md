@@ -1,240 +1,402 @@
 # AI Video Editor
 
-Desktop AI video editor (Electron + React + TypeScript).
+A lightweight desktop video editor built with **Electron 33**, **React 18**, and **TypeScript**.
 
-## 1. Install Requirements (Windows)
+## Current Status
 
-Install these tools first:
+**v0.1.0 (Draft)** – Desktop MVP with basic video timeline editing (drag-reorder clips, trim, split, export). AI-powered features coming later.
 
-1. Node.js LTS (includes npm)
-2. Git
-3. Corepack (included with modern Node.js)
-4. mpv player (Windows build)
+**What's Included Now:**
+- Timeline with multiple tracks (video, audio placeholders)
+- Clip import, trim, split, duplicate, delete, and drag-to-reorder
+- Video preview with mpv player
+- Export to merged video or individual clips
+- Minimal but functional UI
 
-Check versions in PowerShell:
+**Not Yet Implemented:**
+- AI proxy generation / auto-editing features
+- Audio track editing
+- Subtitle support
+- Color grading / effects
 
-```powershell
-node --version
-corepack --version
-git --version
+## System Requirements
+
+### Windows (Recommended)
+- Windows 10 or later (64-bit)
+- Node.js LTS (20.x or newer)
+- Git
+- mpv player (for video preview)
+
+### macOS/Linux
+- Node.js LTS
+- Git
+- mpv (via Homebrew or package manager)
+
+## Quick Start
+
+### Step 1: Clone the Repository
+
+```bash
+git clone https://github.com/YiboMa2333/ai_video_editor.git
+cd ai-video-editor
 ```
 
-## 2. Folder Arrangement
-
-Use this layout:
-
-```text
-D:\AI_video_editor_project\
-  ai-video-editor\
-  converted-videos\
-  _runtime_cache\
-
-D:\video_editor_cache\
-  @ai-video-editor\
-    desktop\
-```
-
-Required before running:
-
-1. `D:\AI_video_editor_project\ai-video-editor`
-  - This is the GitHub-downloaded repository folder.
-2. `D:\AI_video_editor_project\converted-videos`
-  - Stores converted preview/output videos used for Chromium-safe playback.
-3. `D:\AI_video_editor_project\_runtime_cache`
-  - Stores pnpm cache/store data and fallback desktop app user data.
-
-Optional but recommended:
-
-1. `D:\video_editor_cache\@ai-video-editor\desktop`
-  - Preferred Electron user-data/cache location.
-  - If this folder does not exist, the app can create it.
-  - If this folder exists but is read-only, the app falls back to `D:\AI_video_editor_project\_runtime_cache\desktop-user-data`.
-
-What is created automatically on first run:
-
-1. `D:\AI_video_editor_project\converted-videos`
-  - If missing, the app creates it before writing converted files.
-2. `D:\AI_video_editor_project\_runtime_cache\desktop-user-data`
-  - Created automatically only when the preferred `D:\video_editor_cache\@ai-video-editor\desktop` folder is unavailable or not writable.
-3. `D:\video_editor_cache\@ai-video-editor\desktop`
-  - Can be created automatically if Windows permissions allow it.
-
-Notes:
-
-1. Keep the repository in `D:\AI_video_editor_project\ai-video-editor`.
-2. Keep runtime/downloaded artifacts outside the repo in `D:\AI_video_editor_project\_runtime_cache`.
-3. Electron app cache and imported-file working data are stored in `D:\video_editor_cache\@ai-video-editor\desktop`.
-4. Compatible converted videos are written to `D:\AI_video_editor_project\converted-videos`.
-5. This repository already contains `.npmrc` that points pnpm store data to `_runtime_cache`.
-6. If the moved cache folder is read-only, the desktop app automatically falls back to `D:\AI_video_editor_project\_runtime_cache\desktop-user-data` so the app can still start.
-
-You do not need to commit or manually copy any runtime-generated files such as:
-
-1. Converted preview videos inside `converted-videos`
-2. Electron cache/user-data files
-3. pnpm store/cache files in `_runtime_cache`
-
-## 3. First-Time Setup
-
-Run from PowerShell:
+### Step 2: Install Dependencies
 
 ```powershell
-cd "D:\AI_video_editor_project\ai-video-editor"
+# Windows (PowerShell)
 corepack pnpm install
 corepack pnpm approve-builds --all
 corepack pnpm rebuild electron esbuild
 ```
 
-## 3.1 mpv Setup (Required for Preview)
-
-The desktop preview now uses mpv as the playback engine.
-
-Recommended install + project location on Windows:
-
-1. Install mpv (example via winget):
-
-```powershell
-winget install --id shinchiro.mpv -e --accept-package-agreements --accept-source-agreements
-```
-
-2. Keep a project-controlled mpv copy at:
-
-```text
-D:\project_tools\mpv\mpv.exe
-```
-
-3. Set fallback environment variable so Electron can always find mpv:
-
-```powershell
-[Environment]::SetEnvironmentVariable("AI_VIDEO_EDITOR_MPV_PATH", "D:\project_tools\mpv\mpv.exe", "User")
-```
-
-4. (Optional) add mpv folder to user PATH:
-
-```powershell
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($userPath -notlike "*D:\project_tools\mpv*") {
-  [Environment]::SetEnvironmentVariable("Path", "$userPath;D:\project_tools\mpv", "User")
-}
-```
-
-5. Restart VS Code (or open a new terminal) after changing user environment variables.
-
-How mpv is used by the app:
-
-1. Primary mode: pseudo-embedded overlay (borderless mpv window pinned to preview area).
-2. Fallback mode: external mpv window if overlay startup fails.
-3. Timeline data/clip rendering logic remains unchanged; timeline state drives `loadFile` and `seek`.
-
-Files involved in mpv integration:
-
-1. `apps/desktop/src/main/mpv/mpvService.ts`
-2. `apps/desktop/src/main/index.ts`
-3. `apps/desktop/src/preload/index.ts`
-4. `apps/desktop/src/renderer/components/Preview/PreviewWindow.tsx`
-5. `apps/desktop/src/renderer/global.d.ts`
-
-## 3.2 API Setup (FastAPI Proxy Pipeline)
-
-The proxy generation API lives in `apps/api` and uses FastAPI.
-
-Install API dependencies from the repo root:
-
-```powershell
-cd "D:\AI_video_editor_project\ai-video-editor"
-C:/Users/Johnn/AppData/Local/Programs/Python/Python310/python.exe -m pip install -r apps/api/requirements.txt
-```
-
-Run the API server:
-
-```powershell
-cd "D:\AI_video_editor_project\ai-video-editor\apps\api"
-C:/Users/Johnn/AppData/Local/Programs/Python/Python310/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-Important interpreter note (fixes `Import "fastapi" could not be resolved`):
-
-1. In VS Code, use `Python: Select Interpreter`.
-2. Select `C:\Users\Johnn\AppData\Local\Programs\Python\Python310\python.exe`.
-3. Do not use MSYS-style Python paths such as `d:/AI_video_editor_project/.venv/bin/python.exe` for this workspace.
-
-Why this is required:
-
-1. pnpm v10 blocks dependency build scripts by default.
-2. Electron needs postinstall to download `electron.exe`.
-
-## 4. Open the App
-
-Start desktop app:
-
-```powershell
-cd "D:\AI_video_editor_project\ai-video-editor"
-corepack pnpm dev:desktop
-```
-
-Expected result:
-
-1. Vite dev server starts.
-2. Electron window opens with the desktop UI.
-
-## 5. If App Does Not Open: Reset Old Process/Terminal
-
-Use these commands in PowerShell.
-
-Check if old Node/Electron processes are still running:
-
-```powershell
-Get-Process node,electron -ErrorAction SilentlyContinue
-```
-
-Kill old Node/Electron processes:
-
-```powershell
-Stop-Process -Name node,electron -Force -ErrorAction SilentlyContinue
-```
-
-If you want to close the old VS Code terminal tab too, use the terminal trash-can button after stopping the process.
-
-Optional: check if common dev ports are occupied:
-
-```powershell
-Get-NetTCPConnection -LocalPort 5173,5174 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess
-```
-
-If needed, kill by PID (replace 12345):
-
-```powershell
-Stop-Process -Id 12345 -Force
-```
-
-Start a fresh run in a new terminal:
-
-```powershell
-cd "D:\AI_video_editor_project\ai-video-editor"
-corepack pnpm dev:desktop
-```
-
-## 6. Common Issues
-
-If `pnpm` command is not recognized:
-
-1. Use `corepack pnpm` instead of `pnpm`.
-
-If Electron says install failed:
-
-```powershell
-cd "D:\AI_video_editor_project\ai-video-editor"
+```bash
+# macOS/Linux
+corepack pnpm install
 corepack pnpm approve-builds --all
 corepack pnpm rebuild electron esbuild
 ```
 
-## 7. Main Repo Folders
+**Tip:** If you see `"pnpm: command not found"`, use `corepack pnpm` instead of `pnpm`.
 
-1. `apps/desktop`: Electron desktop app
-2. `docs`: architecture and planning docs
-3. `packages`: shared workspace packages
-4. `assets`: static resources
+### Step 3: Install External Tools
+
+The app requires **mpv** for video preview. Install it:
+
+**Windows (winget):**
+```powershell
+winget install --id shinchiro.mpv -e --accept-package-agreements --accept-source-agreements
+```
+
+**Or use our setup helper (Windows):**
+```powershell
+powershell -ExecutionPolicy Bypass -File setup.ps1
+```
+
+**macOS (Homebrew):**
+```bash
+brew install mpv
+```
+
+**Linux (apt):**
+```bash
+sudo apt-get install mpv
+```
+
+For more tool setup options, see [tools/README.md](tools/README.md).
+
+### Step 4: Launch the App
+
+```powershell
+# Windows
+corepack pnpm dev:desktop
+```
+
+```bash
+# macOS / Linux
+corepack pnpm dev:desktop
+```
+
+Expected output:
+```
+✓ Build complete in 2.5s
+App window opening...
+```
+
+The desktop editor should open. If it doesn't, check the [Troubleshooting](#troubleshooting) section.
+
+---
+
+## Directory Structure
+
+```
+ai-video-editor/
+├── apps/
+│   ├── api/                    # FastAPI server (planned, not active)
+│   └── desktop/                # Electron desktop app
+│       ├── src/
+│       │   ├── main/           # Electron main process
+│       │   ├── preload/        # IPC bridge
+│       │   ├── renderer/       # React UI
+│       │   └── ...
+│       ├── electron.vite.config.ts
+│       └── package.json
+├── packages/
+│   └── timeline-engine/        # Shared timeline logic
+├── tools/                       # External tools (mpv, python, etc.)
+├── cache/                       # App cache placeholder
+├── setup.ps1                    # Windows setup helper script
+├── .env.example                 # Environment variables template
+└── README.md                    # This file
+```
+
+---
+
+## Configuration
+
+### Environment Variables
+
+All paths and tools are configurable via environment variables. Create a `.env` file in the repo root (copy from `.env.example`):
+
+```powershell
+# Windows
+copy .env.example .env
+# Edit .env with your preferred paths
+```
+
+**Common Variables:**
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `AI_VIDEO_EDITOR_CACHE_DIR` | App cache/data location | OS-specific (see below) |
+| `AI_VIDEO_EDITOR_TOOLS_DIR` | Tools directory | `[repo]/tools` |
+| `AI_VIDEO_EDITOR_MPV_PATH` | mpv executable path | Auto-detected |
+| `AI_VIDEO_EDITOR_CONVERTED_VIDEOS_DIR` | Converted videos folder | `[parent]/converted-videos` |
+
+**Default Cache Locations (if not configured):**
+
+- **Windows:** `%APPDATA%\ai-video-editor\cache`
+  - Example: `C:\Users\YourName\AppData\Roaming\ai-video-editor\cache`
+- **macOS:** `~/Library/Caches/ai-video-editor`
+- **Linux:** `~/.cache/ai-video-editor` (or `$XDG_CACHE_HOME/ai-video-editor`)
+
+### Permanent Configuration
+
+To set an environment variable permanently on Windows:
+
+```powershell
+[Environment]::SetEnvironmentVariable("AI_VIDEO_EDITOR_MPV_PATH", "C:\path\to\mpv.exe", "User")
+# Restart VS Code or open a new PowerShell terminal for changes to take effect
+```
+
+For macOS/Linux:
+```bash
+echo 'export AI_VIDEO_EDITOR_CACHE_DIR="$HOME/Videos/VideoEditorCache"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+---
+
+## Usage
+
+### Import Media
+1. Click **"Add Media"** button
+2. Select video/audio files (MP4, MOV, MKV, etc.)
+3. Wait for conversion to MP4 (may take 30-60 seconds for large files)
+
+### Edit Timeline
+- **Drag clips** to reorder
+- **Double-click clip edge** to trim
+- **Right-click clip** for trim/split/delete options
+- **Scroll** to zoom timeline in/out
+
+### Playback
+- Use the **seeker bar** to scrub, or
+- Click **Play** button to preview
+
+### Export
+- Click **Export Merged** for a single concatenated video
+- Click **Export Clips** for individual MP4 files
+- Choose output folder and wait for encoding
+
+---
+
+## Troubleshooting
+
+### "App Won't Open" or "Blank Window"
+
+**Check if old processes are still running:**
+```powershell
+Get-Process node,electron -ErrorAction SilentlyContinue
+Stop-Process -Name node,electron -Force
+```
+
+**Then restart:**
+```powershell
+corepack pnpm dev:desktop
+```
+
+### "mpv not found" Error
+
+The app needs mpv for video preview.
+
+**Install it:**
+```powershell
+# Windows (winget)
+winget install --id shinchiro.mpv -e
+
+# Or manually with our helper
+powershell -ExecutionPolicy Bypass -File setup.ps1
+```
+
+**Or tell the app where mpv is:**
+```powershell
+[Environment]::SetEnvironmentVariable("AI_VIDEO_EDITOR_MPV_PATH", "C:\path\to\mpv.exe", "User")
+# Restart terminal or VS Code
+```
+
+**Or add mpv to system PATH:**
+1. Search "Environment Variables" in Windows
+2. Select `Path` and click **Edit**
+3. Add path to mpv directory (e.g., `C:\Program Files\MPV Player`)
+4. Click **OK**, restart VS Code
+
+### "FFmpeg Binary Not Found"
+
+FFmpeg is bundled via npm. If this error appears:
+
+```powershell
+corepack pnpm rebuild electron esbuild
+corepack pnpm dev:desktop
+```
+
+### "Cache Directory Permission Denied"
+
+The app will automatically use a fallback location if the default cache directory is not writable. Check the startup logs:
+
+```
+[paths] Cache directory not writable: [path]. Using fallback: [other path]
+```
+
+To use a custom cache path:
+```powershell
+[Environment]::SetEnvironmentVariable("AI_VIDEO_EDITOR_CACHE_DIR", "D:\MyCache", "User")
+```
+
+### "pnpm: Command Not Found"
+
+Use `corepack pnpm` instead:
+```powershell
+corepack pnpm install
+corepack pnpm dev:desktop
+```
+
+Or set up pnpm globally:
+```powershell
+corepack enable
+corepack use pnpm@latest
+```
+
+### Slow Startup or High CPU
+
+First startup converts video formats, which is normal (30-60 seconds). Subsequent launches are faster.
+
+On slower machines, consider closing other apps while using the editor.
+
+### "Can't Resolve Import" in VS Code
+
+For the `apps/api/` folder:
+
+1. Ctrl+Shift+P → **Python: Select Interpreter**
+2. Look for your Python 3.10+ installation
+3. If none found, install Python from https://python.org
+
+See [tools/Python.md](tools/Python.md) for detailed Python setup.
+
+---
+
+## Development
+
+### Project Structure
+
+- **packages/timeline-engine/**: Pure functions for timeline operations (moveClip, splitClip, deleteRange, etc.)
+- **apps/desktop/src/main/**: Electron main process (FFmpeg, file I/O, mpv service)
+- **apps/desktop/src/preload/**: IPC bridge for secure main ↔ renderer communication
+- **apps/desktop/src/renderer/**: React UI components and Zustand store
+- **apps/api/**: FastAPI server for AI features (future)
+
+### Debugging
+
+**Main Process:**
+```powershell
+corepack pnpm dev:desktop
+# Look for console output in your terminal
+```
+
+**DevTools (Renderer)**
+- In the running app window: `Ctrl+Shift+I` (Windows/Linux) or `Cmd+Option+I` (macOS)
+
+### Building for Production
+
+```powershell
+corepack pnpm build:desktop
+```
+
+Output will be in `apps/desktop/out/`.
+
+---
+
+## Tools & External Dependencies
+
+The app uses several external tools. If you need to customize their locations:
+
+### mpv (Video Player)
+- Default: System PATH or `C:\Program Files\MPV Player\mpv.exe`
+- Or: Place at `tools/mpv/mpv.exe` in the repo
+- Or: Set `AI_VIDEO_EDITOR_MPV_PATH` environment variable
+
+See [tools/README.md](tools/README.md) for detailed setup.
+
+### FFmpeg (Video Encoding)
+- Auto-installed via npm (`ffmpeg-static`)
+- No manual setup needed
+
+### Python (Optional, for API Server)
+- Required: Python 3.10 or later
+- Location: Anywhere on your system PATH
+- Or: Configure via `AI_VIDEO_EDITOR_PYTHON_PATH`
+
+See [tools/Python.md](tools/Python.md) for venv setup.
+
+---
+
+## Cache & Data
+
+### Where Does the App Store Data?
+
+- **App cache/preferences:** OS-specific cache directory (see Configuration above)
+- **Converted videos:** `[parent]/converted-videos/` (or `AI_VIDEO_EDITOR_CONVERTED_VIDEOS_DIR`)
+- **Thumbnails:** `runtime/cache/thumbnails/` (inside repo)
+- **Timeline data:** Saved in user's project files (not yet persistent in v0.1.0)
+
+### Clearing Cache
+
+To start fresh:
+
+```powershell
+# Windows: Delete cache folder
+Remove-Item -RecurseForce "$env:APPDATA\ai-video-editor\cache"
+
+# Or clear fallback cache
+Remove-Item -RecurseForce "cache\"
+```
+
+The app will recreate cache on next launch.
+
+---
+
+## Contributing
+
+This is a personal project. Feel free to fork and extend!
+
+**Future Goals:**
+- AI-powered proxy generation
+- Audio/subtitle track editing
+- Color grading and effects
+- Cloud storage integration
+
+---
 
 ## License
 
 MIT
+
+---
+
+## Support
+
+- **Documentation:** See [tools/README.md](tools/README.md), [cache/README.md](cache/README.md), [tools/Python.md](tools/Python.md)
+- **Setup Helper:** Run `setup.ps1` on Windows
+- **Configuration:** Edit `.env` (copy from `.env.example`)
+
+For issues, check the **Troubleshooting** section above or review the app logs in the cache directory.

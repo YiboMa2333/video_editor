@@ -1,10 +1,63 @@
+# Dependencies and build outputs
 node_modules/
 apps/desktop/node_modules/
 apps/desktop/out/
-apps/converted-videos/
-apps/_runtime_cache/
 .pnpm-store/
 .pnpm-debug.log*
 *.log
+
+# Build artifacts
+dist/
+build/
+out/
+
+# Runtime cache and artifacts (not versioned)
+_runtime_cache/
+cache/**
+!/cache/README.md
+!/cache/.gitkeep
+
+# Converted videos (auto-generated, not versioned)
+converted-videos/
+apps/converted-videos/
+
+# Tools directory (binaries not versioned, only structure)
+tools/**
+!/tools/README.md
+!/tools/Python.md
+!/tools/mpv/.gitkeep
+!/tools/python/.gitkeep
+!/tools/ffmpeg/.gitkeep
+!/tools/.gitkeep
+
+# System files
 .DS_Store
 Thumbs.db
+desktop.ini
+.env
+.env.local
+
+# IDE-specific
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Electron user data (machine-specific)
+desktop-user-data/
+
+# API development
+apps/api/__pycache__/
+apps/api/*.egg-info/
+apps/api/venv/
+apps/api/.venv/
+apps/api/dist/
+apps/api/build/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
