@@ -28,6 +28,16 @@
   font-size: 15px;
 }
 
+.timeline-toolbar-status {
+  color: #9aabc3;
+  font-size: 12px;
+}
+
+.timeline-toolbar-notice {
+  color: #cfe6ff;
+  font-size: 12px;
+}
+
 .timeline-toolbar-actions {
   display: flex;
   flex-wrap: wrap;

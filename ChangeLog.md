@@ -2,6 +2,30 @@
 
 All notable project changes are listed here.
 
+## 2026-04-09 — Timeline editing engine implementation through Task 5.6
+
+- Added standalone timeline editing utilities package in `packages/timeline-engine/` with pure functions and shared clip math helpers.
+  - Added `splitClip` with timeline-time split handling and source-range consistency.
+  - Added `deleteRange` with ripple behavior.
+  - Added `duplicateClip` with new ID generation and duration-preserving placement.
+  - Added `moveClip` preserving duration and preventing invalid negative moves.
+  - Added shared clip helpers (`clipMath.ts`) and exported package types.
+- Connected timeline UI controls to store-backed timeline engine actions.
+  - Wired `Split`, `Delete Range`, `Duplicate`, `Move Left`, and `Move Right` buttons in the timeline toolbar.
+  - Added `Set In`, `Set Out`, and `Clear Range` controls for manual range setup.
+  - Added exact-time range notices and dynamic button labels (for example `Set In: m:ss`, `Set Out: m:ss`).
+- Implemented undo/redo history for timeline edits.
+  - Added project snapshot-based undo/redo stacks in `useProjectStore`.
+  - Added toolbar `Undo` and `Redo` buttons with correct enable/disable behavior.
+- Improved clip identity visibility and selection flow in Media List.
+  - Added `Timeline Clips` section that lists each timeline clip as a separate item.
+  - Kept original media name while showing unique clip IDs and clip-head times for distinction.
+  - Clip rows now seek/select the exact clip instance.
+- Added direct clip deletion from both UI entry points.
+  - Added `Delete Clip` toolbar action for currently selected clip.
+  - Added per-clip `Delete Clip` button in Media List clip rows.
+  - Deletion now uses ripple behavior so later clips shift left and no gap remains.
+
 ## 2026-04-09 — mpv preview migration, editor UI integration, and Windows deployment hardening
 
 - Reworked editor layout to remove top menu-driven workflow and keep editing actions in the main surface.

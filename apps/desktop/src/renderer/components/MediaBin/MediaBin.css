@@ -32,6 +32,14 @@
   gap: 10px;
 }
 
+.media-section-title {
+  margin: 8px 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8f9db2;
+}
+
 .media-item {
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);
@@ -129,6 +137,22 @@
   font-weight: 600;
 }
 
+.media-item-clip-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.media-item-clip-id,
+.media-item-clip-head {
+  font-size: 11px;
+  color: #bcd0ea;
+  background: rgba(123, 164, 214, 0.12);
+  border: 1px solid rgba(123, 164, 214, 0.2);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 .media-item-path {
   margin-top: 0;
 }
@@ -144,12 +168,29 @@
   border: 1px solid rgba(121, 174, 247, 0.18);
 }
 
+.media-item-delete-button {
+  background: rgba(238, 96, 117, 0.16);
+  color: #ffd7dd;
+  border: 1px solid rgba(238, 96, 117, 0.28);
+}
+
 .media-item-add-button:hover {
   filter: none;
   background: rgba(121, 174, 247, 0.24);
 }
 
+.media-item-delete-button:hover {
+  filter: none;
+  background: rgba(238, 96, 117, 0.28);
+}
+
 .media-item-add-button:disabled {
+  background: rgba(255, 255, 255, 0.06);
+  color: #8e9cb1;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.media-item-delete-button:disabled {
   background: rgba(255, 255, 255, 0.06);
   color: #8e9cb1;
   border-color: rgba(255, 255, 255, 0.08);

@@ -1,0 +1,23 @@
+{
+  "name": "timeline-engine",
+  "version": "1.0.0",
+  "description": "A set of utilities for timeline editing in a non-destructive video editor.",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "keywords": [
+    "video",
+    "editor",
+    "timeline",
+    "utilities"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^4.0.0",
+    "jest": "^26.0.0",
+    "@types/jest": "^26.0.0"
+  }
+}
