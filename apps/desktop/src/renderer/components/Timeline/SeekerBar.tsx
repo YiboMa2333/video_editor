@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { usePlayerStore } from "../../store/usePlayerStore";
+import { useProjectStore } from "../../store/useProjectStore";
+import { getTimelineEnd, getTimelineStart } from "../../utils/timelineMetrics";
 
 type SeekerBarProps = {
   timelineDurationSec: number;
@@ -14,6 +16,12 @@ export function SeekerBar({ timelineDurationSec }: SeekerBarProps) {
   const setCurrentTime = usePlayerStore((s) => s.setCurrentTime);
   const setScrubTime = usePlayerStore((s) => s.setScrubTime);
   const requestSeek = usePlayerStore((s) => s.requestSeek);
+  const tracks = useProjectStore((state) => state.project.tracks);
+  const selectedClipId = useProjectStore((state) => state.selectedClipId);
+  const selectedTrackId = useProjectStore((state) => state.selectedTrackId);
+  const selectClip = useProjectStore((state) => state.selectClip);
+  const selectTrack = useProjectStore((state) => state.selectTrack);
+  const selectMedia = useProjectStore((state) => state.selectMedia);
 
   const safeMax = useMemo(() => {
     const max = Number.isFinite(timelineDurationSec) ? timelineDurationSec : 0;
@@ -28,6 +36,35 @@ export function SeekerBar({ timelineDurationSec }: SeekerBarProps) {
     }
 
     return Math.min(Math.max(0, value), safeMax);
+  };
+
+  const selectClipAtTime = (timeSec: number) => {
+    const videoTrack = tracks.find((track) => track.kind === "video");
+    if (!videoTrack) {
+      return;
+    }
+
+    const hitClip = videoTrack.clips.find((clip) => {
+      const start = getTimelineStart(clip);
+      const end = getTimelineEnd(clip);
+      return timeSec >= start && timeSec < end;
+    });
+
+    if (!hitClip) {
+      if (selectedClipId !== null || selectedTrackId !== null) {
+        selectClip(null);
+        selectTrack(null);
+      }
+      return;
+    }
+
+    if (selectedClipId === hitClip.id && selectedTrackId === videoTrack.id) {
+      return;
+    }
+
+    selectClip(hitClip.id);
+    selectTrack(videoTrack.id);
+    selectMedia(hitClip.mediaId);
   };
 
   const commitScrub = () => {
@@ -55,11 +92,13 @@ export function SeekerBar({ timelineDurationSec }: SeekerBarProps) {
           beginScrub(initial);
           setScrubTime(initial);
           setCurrentTime(initial);
+          selectClipAtTime(initial);
         }}
         onChange={(event) => {
           const next = clampTimelineTime(Number.parseFloat(event.target.value));
           setScrubTime(next);
           setCurrentTime(next);
+          selectClipAtTime(next);
         }}
         onPointerUp={commitScrub}
         onBlur={() => {

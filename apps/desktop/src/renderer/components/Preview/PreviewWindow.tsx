@@ -21,9 +21,33 @@ const getPreferredPath = (media?: Pick<MediaItem, "originalPath" | "path">): str
   return media.originalPath || media.path || null;
 };
 
+const getPreviewHostPayload = (node: HTMLDivElement) => {
+  const rect = node.getBoundingClientRect();
+
+  // Pseudo-embedded overlay should sit centered and large inside the
+  // preview panel rather than hugging the top-left corner.
+  const widthScale = 0.96;
+  const heightScale = 0.9;
+  const targetWidth = Math.max(320, Math.round(rect.width * widthScale));
+  const targetHeight = Math.max(180, Math.round(rect.height * heightScale));
+  const targetX = rect.left + (rect.width - targetWidth) / 2;
+  const targetY = rect.top + (rect.height - targetHeight) / 2;
+
+  return {
+    bounds: {
+      x: targetX,
+      y: targetY,
+      width: targetWidth,
+      height: targetHeight,
+    },
+    scaleFactor: 1,
+  };
+};
+
 export function PreviewWindow() {
   const [mpvStatus, setMpvStatus] = useState<MpvStatus | null>(null);
   const [statusText, setStatusText] = useState("Initializing mpv preview...");
+  const [isReactivating, setIsReactivating] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const selectedMediaId = useProjectStore((state) => state.selectedMediaId);
@@ -93,6 +117,56 @@ export function PreviewWindow() {
     void refreshStatus();
   }, []);
 
+  const reactivatePreview = async () => {
+    if (!activePreviewPath) {
+      setStatusText("Import media to open an mpv preview window.");
+      return;
+    }
+
+    setIsReactivating(true);
+    setStatusText("Reactivating mpv preview...");
+
+    try {
+      const node = containerRef.current;
+      if (node) {
+        const attachResult = await window.mpv.attachPreviewHost(getPreviewHostPayload(node));
+        if (!attachResult.ok) {
+          console.warn("[preview] mpv reactivate overlay attach failed", attachResult.error);
+        }
+      }
+
+      lastLoadedPathRef.current = null;
+      lastSeekSourceRef.current = null;
+
+      const loadResult = await window.mpv.loadFile(activePreviewPath);
+      if (!loadResult.ok) {
+        setStatusText(`mpv reactivation failed: ${loadResult.error || "unknown error"}`);
+        return;
+      }
+
+      lastLoadedPathRef.current = activePreviewPath;
+
+      const sourceTime = Math.max(0, displayMapping.sourceTimeSec);
+      if (Number.isFinite(sourceTime)) {
+        const seekResult = await window.mpv.seek(sourceTime);
+        if (seekResult.ok) {
+          lastSeekSourceRef.current = sourceTime;
+        }
+      }
+
+      const playbackResult = isPlaying ? await window.mpv.play() : await window.mpv.pause();
+      if (!playbackResult.ok) {
+        setStatusText(`mpv playback sync failed: ${playbackResult.error || "unknown error"}`);
+        return;
+      }
+
+      setStatusText(`mpv reactivated: ${activePreviewMedia?.name || "media"}`);
+    } finally {
+      setIsReactivating(false);
+      await refreshStatus();
+    }
+  };
+
   useEffect(() => {
     const node = containerRef.current;
     if (!node) {
@@ -102,40 +176,17 @@ export function PreviewWindow() {
     let disposed = false;
     let rafId: number | null = null;
 
-    const getBoundsPayload = () => {
-      const rect = node.getBoundingClientRect();
-
-      // Pseudo-embedded overlay should sit centered and large inside the
-      // preview panel rather than hugging the top-left corner.
-      const widthScale = 0.96;
-      const heightScale = 0.9;
-      const targetWidth = Math.max(320, Math.round(rect.width * widthScale));
-      const targetHeight = Math.max(180, Math.round(rect.height * heightScale));
-      const targetX = rect.left + (rect.width - targetWidth) / 2;
-      const targetY = rect.top + (rect.height - targetHeight) / 2;
-
-      return {
-        bounds: {
-          x: targetX,
-          y: targetY,
-          width: targetWidth,
-          height: targetHeight,
-        },
-        scaleFactor: 1,
-      };
-    };
-
     const reportBounds = () => {
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
       rafId = requestAnimationFrame(() => {
-        void window.mpv.updatePreviewHostBounds(getBoundsPayload());
+        void window.mpv.updatePreviewHostBounds(getPreviewHostPayload(node));
       });
     };
 
     void (async () => {
-      const attachResult = await window.mpv.attachPreviewHost(getBoundsPayload());
+      const attachResult = await window.mpv.attachPreviewHost(getPreviewHostPayload(node));
       if (!attachResult.ok) {
         console.warn("[preview] overlay attach failed, external fallback remains active", attachResult.error);
       } else {
@@ -239,6 +290,7 @@ export function PreviewWindow() {
   }, [isPlaying]);
 
   const isUnavailable = mpvStatus !== null && (!mpvStatus.available || Boolean(mpvStatus.lastError));
+  const canReactivate = Boolean(activePreviewPath) && !isReactivating;
   const previewModeLabel =
     mpvStatus?.mode === "overlay-window"
       ? "overlay pinned"
@@ -263,6 +315,12 @@ export function PreviewWindow() {
             pseudo-embedded overlay (borderless mpv window pinned to this region) and falls back to external mode if unavailable.
           </p>
 
+          <div className="preview-actions-row">
+            <button className="preview-reactivate-button" type="button" onClick={() => void reactivatePreview()} disabled={!canReactivate}>
+              {isReactivating ? "Reactivating..." : "Reactivate mpv player"}
+            </button>
+          </div>
+
           {isUnavailable ? (
             <div className="preview-warning" role="alert">
               <strong>mpv unavailable.</strong>
@@ -274,6 +332,7 @@ export function PreviewWindow() {
             <div className="preview-ok" role="status">
               <span>mpv IPC connected: {mpvStatus?.connected ? "yes" : "starting"}</span>
               <span>Selected media: {activePreviewMedia?.name || "none"}</span>
+              <span>{activePreviewPath ? "Use Reactivate mpv player if the preview window was closed." : "Import media to enable reactivation."}</span>
             </div>
           )}
         </div>

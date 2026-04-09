@@ -10,6 +10,8 @@ type TimelineClipProps = {
   timelineDurationSec: number;
   timelineStartSec: number;
   timelineEndSec: number;
+  onDragMove?: (clipId: string, previewStartSec: number, durationSec: number) => void;
+  onDragEnd?: (clipId: string, didDrag: boolean) => void;
 };
 
 export function TimelineClip({
@@ -18,6 +20,8 @@ export function TimelineClip({
   timelineDurationSec,
   timelineStartSec,
   timelineEndSec,
+  onDragMove,
+  onDragEnd,
 }: TimelineClipProps) {
   const media = useProjectStore((state) =>
     state.project.media.find((item) => item.id === clip.mediaId)
@@ -26,16 +30,23 @@ export function TimelineClip({
   const selectClip = useProjectStore((state) => state.selectClip);
   const selectTrack = useProjectStore((state) => state.selectTrack);
   const selectMedia = useProjectStore((state) => state.selectMedia);
-  const setCurrentTime = usePlayerStore((state) => state.setCurrentTime);
-  const setScrubTime = usePlayerStore((state) => state.setScrubTime);
-  const requestSeek = usePlayerStore((state) => state.requestSeek);
-  const endScrub = usePlayerStore((state) => state.endScrub);
   const clipRef = useRef<HTMLDivElement>(null);
+  const dragStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    initialStartSec: number;
+    laneWidthPx: number;
+    didDrag: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
   const [isVisible, setIsVisible] = useState(true);
   const [clipWidthPx, setClipWidthPx] = useState(0);
+  const [dragPreviewStartSec, setDragPreviewStartSec] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const safeDuration = timelineDurationSec > 0 ? timelineDurationSec : 1;
-  const leftPercent = (Math.max(0, timelineStartSec) / safeDuration) * 100;
+  const clipStartSec = dragPreviewStartSec ?? timelineStartSec;
+  const leftPercent = (Math.max(0, clipStartSec) / safeDuration) * 100;
   const widthPercent = (Math.max(0, timelineEndSec - timelineStartSec) / safeDuration) * 100;
   const clipDuration = Math.max(0, timelineEndSec - timelineStartSec);
   const isSelected = selectedClipId === clip.id;
@@ -109,27 +120,116 @@ export function TimelineClip({
     clip,
   ]);
 
+  const finishDrag = (commitMove: boolean) => {
+    const dragState = dragStateRef.current;
+    if (!dragState) {
+      return;
+    }
+
+    const nextStart = dragPreviewStartSec ?? dragState.initialStartSec;
+    const didDrag =
+      commitMove &&
+      dragState.didDrag &&
+      Math.abs(nextStart - dragState.initialStartSec) > 1e-4;
+
+    dragStateRef.current = null;
+    setIsDragging(false);
+    setDragPreviewStartSec(null);
+
+    onDragEnd?.(clip.id, didDrag);
+  };
+
   return (
     <div
       ref={clipRef}
-      className={isSelected ? "timeline-clip timeline-clip-selected" : "timeline-clip"}
+      className={[
+        "timeline-clip",
+        isSelected ? "timeline-clip-selected" : "",
+        isDragging ? "timeline-clip-dragging" : "",
+      ].filter(Boolean).join(" ")}
       style={{
         left: `${leftPercent}%`,
         width: `${Math.max(widthPercent, 1)}%`,
       }}
       title={`${media?.name || clip.mediaId}: ${timelineStartSec.toFixed(2)}s - ${timelineEndSec.toFixed(2)}s`}
-      onMouseDown={(event) => {
+      onPointerDown={(event) => {
+        if (event.button !== 0) {
+          return;
+        }
+
         event.preventDefault();
+        event.stopPropagation();
+
+        const lane = event.currentTarget.parentElement;
+        if (!lane) {
+          return;
+        }
+
+        const laneRect = lane.getBoundingClientRect();
+        if (laneRect.width <= 0) {
+          return;
+        }
+
+        suppressClickRef.current = false;
+        dragStateRef.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          initialStartSec: timelineStartSec,
+          laneWidthPx: laneRect.width,
+          didDrag: false,
+        };
+
+        setIsDragging(true);
+        setDragPreviewStartSec(timelineStartSec);
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        const dragState = dragStateRef.current;
+        if (!dragState || dragState.pointerId !== event.pointerId) {
+          return;
+        }
+
+        const deltaPx = event.clientX - dragState.startX;
+        if (Math.abs(deltaPx) > 2) {
+          dragState.didDrag = true;
+        }
+
+        const deltaSec = (deltaPx / dragState.laneWidthPx) * safeDuration;
+        const nextStart = Math.max(0, dragState.initialStartSec + deltaSec);
+        setDragPreviewStartSec(nextStart);
+        onDragMove?.(clip.id, nextStart, clipDuration);
+      }}
+      onPointerUp={(event) => {
+        const dragState = dragStateRef.current;
+        if (!dragState || dragState.pointerId !== event.pointerId) {
+          return;
+        }
+
+        suppressClickRef.current = dragState.didDrag;
+        event.currentTarget.releasePointerCapture(event.pointerId);
+        finishDrag(true);
+      }}
+      onPointerCancel={(event) => {
+        const dragState = dragStateRef.current;
+        if (!dragState || dragState.pointerId !== event.pointerId) {
+          return;
+        }
+
+        event.currentTarget.releasePointerCapture(event.pointerId);
+        finishDrag(false);
       }}
       onClick={(event) => {
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
         event.stopPropagation();
         selectClip(clip.id);
         selectTrack(trackId);
         selectMedia(clip.mediaId);
-        setCurrentTime(timelineStartSec);
-        setScrubTime(null);
-        requestSeek(timelineStartSec);
-        endScrub();
       }}
     >
       {thumbnailUrls.length > 0 ? (

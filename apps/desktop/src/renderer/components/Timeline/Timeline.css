@@ -87,6 +87,9 @@
   min-width: 8px;
   z-index: 1;
   overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
 .timeline-clip-selected {
@@ -94,6 +97,12 @@
   box-shadow:
     0 0 0 1px rgba(158, 196, 255, 0.75),
     0 0 0 3px rgba(158, 196, 255, 0.2);
+}
+
+.timeline-clip-dragging {
+  cursor: grabbing;
+  opacity: 0.92;
+  z-index: 3;
 }
 
 .timeline-clip-thumbnails {

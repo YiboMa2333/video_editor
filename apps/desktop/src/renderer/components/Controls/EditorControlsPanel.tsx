@@ -72,6 +72,22 @@ export function EditorControlsPanel({ backend }: EditorControlsPanelProps) {
         <button
           type="button"
           className="editor-controls-secondary"
+          onClick={() => jumpBy(-1)}
+          disabled={!canJumpBackward}
+        >
+          Jump -1s
+        </button>
+        <button
+          type="button"
+          className="editor-controls-secondary"
+          onClick={() => jumpBy(1)}
+          disabled={!canJumpForward}
+        >
+          Jump +1s
+        </button>
+        <button
+          type="button"
+          className="editor-controls-secondary"
           onClick={() => jumpBy(5)}
           disabled={!canJumpForward}
         >

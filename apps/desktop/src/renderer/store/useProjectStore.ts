@@ -46,6 +46,8 @@ interface ProjectState {
   duplicateSelectedClip: () => void;
   moveSelectedClipLeft: () => void;
   moveSelectedClipRight: () => void;
+  moveClipToTime: (trackId: string, clipId: string, newStartSec: number) => void;
+  reorderClipInTrack: (trackId: string, clipId: string, targetIndex: number) => void;
   undo: () => void;
   redo: () => void;
   renameProject: (name: string) => void;
@@ -123,6 +125,35 @@ const syncClipAliases = (clip: Clip): Clip => ({
 });
 
 const syncTrackClipAliases = (clips: Clip[]): Clip[] => clips.map(syncClipAliases);
+
+const normalizeTrackTimelineOrder = (clips: Clip[]): Clip[] => {
+  const sorted = [...clips].sort((a, b) => a.timelineStart - b.timelineStart);
+  const normalized: Clip[] = [];
+  let cursor = 0;
+
+  for (const clip of sorted) {
+    const start = Math.max(clip.timelineStart, cursor);
+    const movedClip = start === clip.timelineStart ? clip : moveTimelineClip(clip, start);
+    const syncedClip = syncClipAliases(movedClip);
+    normalized.push(syncedClip);
+    cursor = syncedClip.timelineEnd;
+  }
+
+  return normalized;
+};
+
+const packTrackClipsFromZero = (clips: Clip[]): Clip[] => {
+  const packed: Clip[] = [];
+  let cursor = 0;
+
+  for (const clip of clips) {
+    const moved = syncClipAliases(moveTimelineClip(clip, cursor));
+    packed.push(moved);
+    cursor = moved.timelineEnd;
+  }
+
+  return packed;
+};
 
 const removeClipWithRipple = (
   clips: Clip[],
@@ -820,6 +851,138 @@ export const useProjectStore = create<ProjectState>()(
           return {
             ...nextState,
             ...pushProjectHistory(state),
+            undoStackDepth: nextUndoDepth(state.undoStackDepth),
+          };
+        }),
+
+      moveClipToTime: (trackId, clipId, newStartSec) =>
+        set((state) => {
+          if (!Number.isFinite(newStartSec)) {
+            return state;
+          }
+
+          const targetStart = Math.max(0, newStartSec);
+          let moved = false;
+
+          const nextState = {
+            ...updateActiveProject(state, (project) => ({
+              ...project,
+              tracks: project.tracks.map((track) => {
+                if (track.id !== trackId) {
+                  return track;
+                }
+
+                const clipIndex = track.clips.findIndex((clip) => clip.id === clipId);
+                if (clipIndex < 0) {
+                  return track;
+                }
+
+                const movedClip = syncClipAliases(
+                  moveTimelineClip(track.clips[clipIndex], targetStart),
+                );
+
+                const mergedClips = [
+                  ...track.clips.slice(0, clipIndex),
+                  movedClip,
+                  ...track.clips.slice(clipIndex + 1),
+                ];
+
+                const normalizedClips = normalizeTrackTimelineOrder(mergedClips);
+                const normalizedMovedClip = normalizedClips.find((clip) => clip.id === clipId);
+
+                if (!normalizedMovedClip) {
+                  return track;
+                }
+
+                const previousClip = track.clips[clipIndex];
+                const didMove =
+                  Math.abs(normalizedMovedClip.timelineStart - previousClip.timelineStart) > 1e-6 ||
+                  Math.abs(normalizedMovedClip.timelineEnd - previousClip.timelineEnd) > 1e-6;
+
+                if (!didMove) {
+                  return track;
+                }
+
+                moved = true;
+
+                return {
+                  ...track,
+                  clips: normalizedClips,
+                };
+              }),
+              updatedAt: moved ? now() : project.updatedAt,
+            })),
+          };
+
+          if (!moved) {
+            return state;
+          }
+
+          return {
+            ...nextState,
+            ...pushProjectHistory(state),
+            selectedClipId: clipId,
+            selectedTrackId: trackId,
+            selectedRangeStartSec: null,
+            selectedRangeEndSec: null,
+            undoStackDepth: nextUndoDepth(state.undoStackDepth),
+          };
+        }),
+
+      reorderClipInTrack: (trackId, clipId, targetIndex) =>
+        set((state) => {
+          if (!Number.isFinite(targetIndex)) {
+            return state;
+          }
+
+          const boundedTargetIndex = Math.max(0, Math.floor(targetIndex));
+          let moved = false;
+
+          const nextState = {
+            ...updateActiveProject(state, (project) => ({
+              ...project,
+              tracks: project.tracks.map((track) => {
+                if (track.id !== trackId) {
+                  return track;
+                }
+
+                const sorted = [...track.clips].sort((a, b) => a.timelineStart - b.timelineStart);
+                const clipIndex = sorted.findIndex((clip) => clip.id === clipId);
+                if (clipIndex < 0) {
+                  return track;
+                }
+
+                const withoutClip = sorted.filter((clip) => clip.id !== clipId);
+                const insertAt = Math.min(withoutClip.length, boundedTargetIndex);
+                const reordered = [...withoutClip];
+                reordered.splice(insertAt, 0, sorted[clipIndex]);
+
+                if (insertAt === clipIndex) {
+                  return track;
+                }
+
+                moved = true;
+
+                return {
+                  ...track,
+                  clips: packTrackClipsFromZero(reordered),
+                };
+              }),
+              updatedAt: moved ? now() : project.updatedAt,
+            })),
+          };
+
+          if (!moved) {
+            return state;
+          }
+
+          return {
+            ...nextState,
+            ...pushProjectHistory(state),
+            selectedClipId: clipId,
+            selectedTrackId: trackId,
+            selectedRangeStartSec: null,
+            selectedRangeEndSec: null,
             undoStackDepth: nextUndoDepth(state.undoStackDepth),
           };
         }),
