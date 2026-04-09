@@ -20,4 +20,41 @@ contextBridge.exposeInMainWorld("desktopAPI", {
     }>,
 });
 
+contextBridge.exposeInMainWorld("mpv", {
+  getStatus: () =>
+    ipcRenderer.invoke("mpv:status") as Promise<{
+      available: boolean;
+      connected: boolean;
+      mode: "overlay-window" | "external-window-mvp" | "external-fallback";
+      lastError: string | null;
+    }>,
+  attachPreviewHost: (payload: {
+    bounds: { x: number; y: number; width: number; height: number };
+    scaleFactor?: number;
+  }) =>
+    ipcRenderer.invoke("mpv:attachPreviewHost", payload) as Promise<{
+      ok: boolean;
+      error?: string;
+    }>,
+  updatePreviewHostBounds: (payload: {
+    bounds: { x: number; y: number; width: number; height: number };
+    scaleFactor?: number;
+  }) =>
+    ipcRenderer.invoke("mpv:updatePreviewHostBounds", payload) as Promise<{
+      ok: boolean;
+      error?: string;
+    }>,
+  detachPreviewHost: () =>
+    ipcRenderer.invoke("mpv:detachPreviewHost") as Promise<{ ok: boolean; error?: string }>,
+  loadFile: (filePath: string) =>
+    ipcRenderer.invoke("mpv:loadFile", filePath) as Promise<{ ok: boolean; error?: string }>,
+  seek: (timeSec: number) =>
+    ipcRenderer.invoke("mpv:seek", timeSec) as Promise<{ ok: boolean; error?: string }>,
+  play: () => ipcRenderer.invoke("mpv:play") as Promise<{ ok: boolean; error?: string }>,
+  pause: () => ipcRenderer.invoke("mpv:pause") as Promise<{ ok: boolean; error?: string }>,
+  stop: () => ipcRenderer.invoke("mpv:stop") as Promise<{ ok: boolean; error?: string }>,
+  setVolume: (volumePercent: number) =>
+    ipcRenderer.invoke("mpv:setVolume", volumePercent) as Promise<{ ok: boolean; error?: string }>,
+});
+
 console.log("Preload script loaded, APIs exposed");

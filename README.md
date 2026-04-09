@@ -9,6 +9,7 @@ Install these tools first:
 1. Node.js LTS (includes npm)
 2. Git
 3. Corepack (included with modern Node.js)
+4. mpv player (Windows build)
 
 Check versions in PowerShell:
 
@@ -84,7 +85,56 @@ corepack pnpm approve-builds --all
 corepack pnpm rebuild electron esbuild
 ```
 
-## 3.1 API Setup (FastAPI Proxy Pipeline)
+## 3.1 mpv Setup (Required for Preview)
+
+The desktop preview now uses mpv as the playback engine.
+
+Recommended install + project location on Windows:
+
+1. Install mpv (example via winget):
+
+```powershell
+winget install --id shinchiro.mpv -e --accept-package-agreements --accept-source-agreements
+```
+
+2. Keep a project-controlled mpv copy at:
+
+```text
+D:\project_tools\mpv\mpv.exe
+```
+
+3. Set fallback environment variable so Electron can always find mpv:
+
+```powershell
+[Environment]::SetEnvironmentVariable("AI_VIDEO_EDITOR_MPV_PATH", "D:\project_tools\mpv\mpv.exe", "User")
+```
+
+4. (Optional) add mpv folder to user PATH:
+
+```powershell
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($userPath -notlike "*D:\project_tools\mpv*") {
+  [Environment]::SetEnvironmentVariable("Path", "$userPath;D:\project_tools\mpv", "User")
+}
+```
+
+5. Restart VS Code (or open a new terminal) after changing user environment variables.
+
+How mpv is used by the app:
+
+1. Primary mode: pseudo-embedded overlay (borderless mpv window pinned to preview area).
+2. Fallback mode: external mpv window if overlay startup fails.
+3. Timeline data/clip rendering logic remains unchanged; timeline state drives `loadFile` and `seek`.
+
+Files involved in mpv integration:
+
+1. `apps/desktop/src/main/mpv/mpvService.ts`
+2. `apps/desktop/src/main/index.ts`
+3. `apps/desktop/src/preload/index.ts`
+4. `apps/desktop/src/renderer/components/Preview/PreviewWindow.tsx`
+5. `apps/desktop/src/renderer/global.d.ts`
+
+## 3.2 API Setup (FastAPI Proxy Pipeline)
 
 The proxy generation API lives in `apps/api` and uses FastAPI.
 

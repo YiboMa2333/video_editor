@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, net, protocol } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, net, protocol } from "electron";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -6,6 +6,7 @@ import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { MpvService } from "./mpv/mpvService";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -123,6 +124,66 @@ function resolveFfmpegPath() {
 const ffmpegPath = resolveFfmpegPath();
 
 let mainWindow: BrowserWindow | null = null;
+const mpvService = new MpvService();
+let previewHostRelativeBounds: { x: number; y: number; width: number; height: number } | null = null;
+let previewHostOwnerWindow: BrowserWindow | null = null;
+let removeOverlayTrackingListeners: (() => void) | null = null;
+
+function toSafeEmbedBounds(
+  bounds: { x: number; y: number; width: number; height: number },
+  scaleFactor = 1,
+) {
+  // Keep embed geometry in logical renderer pixels. Chromium and mpv child
+  // placement under --wid align best this way; multiplying by devicePixelRatio
+  // can push the child window outside the intended preview region.
+  const scale = 1;
+
+  return {
+    x: Math.max(0, Math.round(bounds.x * scale)),
+    y: Math.max(0, Math.round(bounds.y * scale)),
+    width: Math.max(16, Math.round(bounds.width * scale)),
+    height: Math.max(16, Math.round(bounds.height * scale)),
+  };
+}
+
+function toOverlayScreenBounds(
+  ownerWindow: BrowserWindow,
+  relativeBounds: { x: number; y: number; width: number; height: number },
+  scaleFactor = 1,
+) {
+  const safeRelative = toSafeEmbedBounds(relativeBounds, scaleFactor);
+  const contentBounds = ownerWindow.getContentBounds();
+
+  return {
+    x: Math.max(0, contentBounds.x + safeRelative.x),
+    y: Math.max(0, contentBounds.y + safeRelative.y),
+    width: safeRelative.width,
+    height: safeRelative.height,
+  };
+}
+
+function bindOverlayTracking(windowRef: BrowserWindow) {
+  removeOverlayTrackingListeners?.();
+
+  const syncOverlay = () => {
+    if (!previewHostRelativeBounds) {
+      return;
+    }
+
+    const overlayBounds = toOverlayScreenBounds(windowRef, previewHostRelativeBounds, 1);
+    void mpvService.updateOverlayBounds(overlayBounds).catch((error) => {
+      console.warn("[mpv] failed to sync overlay bounds", error);
+    });
+  };
+
+  windowRef.on("move", syncOverlay);
+  windowRef.on("resize", syncOverlay);
+
+  removeOverlayTrackingListeners = () => {
+    windowRef.removeListener("move", syncOverlay);
+    windowRef.removeListener("resize", syncOverlay);
+  };
+}
 
 function toLocalMediaUrl(filePath: string) {
   return `local-media://file?path=${encodeURIComponent(filePath)}`;
@@ -400,22 +461,6 @@ function createWindow() {
   }
 }
 
-function createMenu() {
-  const template: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: "File",
-      submenu: [
-        {
-          label: "Exit",
-          accelerator: "CmdOrCtrl+Q",
-          click: () => app.quit(),
-        },
-      ],
-    },
-  ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-}
-
 app.whenReady().then(() => {
   protocol.handle("local-media", (request) => {
     const url = new URL(request.url);
@@ -461,12 +506,180 @@ app.whenReady().then(() => {
     return clearAppCaches();
   });
 
-  createMenu();
+  ipcMain.handle("mpv:status", () => {
+    return mpvService.getStatus();
+  });
+
+  ipcMain.handle(
+    "mpv:attachPreviewHost",
+    async (
+      event,
+      payload: {
+        bounds: { x: number; y: number; width: number; height: number };
+        scaleFactor?: number;
+      }
+    ) => {
+      try {
+        const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+        if (!ownerWindow) {
+          return { ok: false, error: "Unable to resolve owner BrowserWindow for preview host." };
+        }
+
+        previewHostOwnerWindow = ownerWindow;
+        previewHostRelativeBounds = payload.bounds;
+        bindOverlayTracking(ownerWindow);
+
+        const bounds = toOverlayScreenBounds(ownerWindow, payload.bounds, payload.scaleFactor);
+
+        console.log("[mpv] attaching overlay preview host", {
+          bounds,
+          scaleFactor: payload.scaleFactor,
+        });
+
+        mpvService.setOverlayHost({ bounds });
+        await mpvService.updateOverlayBounds(bounds);
+
+        return { ok: true };
+      } catch (error) {
+        console.warn("[mpv] failed to attach overlay host, keeping fallback mode", error);
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "mpv:updatePreviewHostBounds",
+    async (
+      event,
+      payload: {
+        bounds: { x: number; y: number; width: number; height: number };
+        scaleFactor?: number;
+      }
+    ) => {
+      try {
+        const ownerWindow = BrowserWindow.fromWebContents(event.sender) ?? previewHostOwnerWindow;
+        if (!ownerWindow) {
+          return { ok: false, error: "No owner window available for overlay bounds update." };
+        }
+
+        previewHostRelativeBounds = payload.bounds;
+        const bounds = toOverlayScreenBounds(ownerWindow, payload.bounds, payload.scaleFactor);
+        await mpvService.updateOverlayBounds(bounds);
+        return { ok: true };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+  );
+
+  ipcMain.handle("mpv:detachPreviewHost", async () => {
+    mpvService.clearOverlayHost();
+    previewHostRelativeBounds = null;
+    previewHostOwnerWindow = null;
+    removeOverlayTrackingListeners?.();
+    removeOverlayTrackingListeners = null;
+
+    try {
+      await mpvService.stop();
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcMain.handle("mpv:loadFile", async (_event, filePath: string) => {
+    try {
+      await mpvService.loadFile(filePath);
+      return { ok: true };
+    } catch (error) {
+      console.error("[mpv] loadFile failed", error);
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcMain.handle("mpv:seek", async (_event, timeSec: number) => {
+    try {
+      await mpvService.seek(timeSec);
+      return { ok: true };
+    } catch (error) {
+      console.error("[mpv] seek failed", error);
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcMain.handle("mpv:play", async () => {
+    try {
+      await mpvService.play();
+      return { ok: true };
+    } catch (error) {
+      console.error("[mpv] play failed", error);
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcMain.handle("mpv:pause", async () => {
+    try {
+      await mpvService.pause();
+      return { ok: true };
+    } catch (error) {
+      console.error("[mpv] pause failed", error);
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcMain.handle("mpv:stop", async () => {
+    try {
+      await mpvService.stop();
+      return { ok: true };
+    } catch (error) {
+      console.error("[mpv] stop failed", error);
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcMain.handle("mpv:setVolume", async (_event, volumePercent: number) => {
+    try {
+      await mpvService.setVolume(volumePercent);
+      return { ok: true };
+    } catch (error) {
+      console.error("[mpv] setVolume failed", error);
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  // MVP UI decision: we intentionally avoid native app menus so File/View/Edit
+  // actions live in the editor surface, next to timeline and preview controls.
   createWindow();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMenu();
       createWindow();
     }
   });
@@ -474,4 +687,8 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", async () => {
+  await mpvService.shutdown();
 });

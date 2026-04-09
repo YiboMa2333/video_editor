@@ -2,6 +2,47 @@
 
 All notable project changes are listed here.
 
+## 2026-04-09 — mpv preview migration, editor UI integration, and Windows deployment hardening
+
+- Reworked editor layout to remove top menu-driven workflow and keep editing actions in the main surface.
+  - Removed renderer top bar usage (`File / Edit / View` in the app UI flow).
+  - Added unified in-layout controls panel containing import/export access, backend state, preview mode state, and quick timeline jump actions.
+  - Kept timeline toolbar and timeline logic unchanged.
+- Replaced frame-only preview as primary preview mode with mpv-driven preview control.
+  - Added main-process mpv service with JSON IPC command support:
+    - `loadFile(path)`
+    - `seek(time)`
+    - `play()`
+    - `pause()`
+    - `stop()`
+    - `setVolume(percent)`
+  - Added preload bridge and renderer typings for safe `window.mpv.*` API usage.
+  - Updated preview component flow to reuse existing timeline mapping state (`mapTimelineTimeToSourceTime`) so timeline/clip rendering logic remains unchanged.
+  - Added seek dedupe guardrails to avoid over-spam on tiny deltas.
+- Added robust Windows mpv runtime discovery and startup resilience.
+  - Added executable resolution fallback order for Windows:
+    - `AI_VIDEO_EDITOR_MPV_PATH` environment override
+    - `D:\project_tools\mpv\mpv.exe`
+    - `D:\AI_video_editor_project\_runtime_cache\tools\mpv\mpv.exe`
+    - `C:\Program Files\MPV Player\mpv.exe`
+    - fallback to `mpv` on PATH
+  - Added startup/connect locking and retry behavior to reduce race conditions.
+  - Added explicit logging for startup args, mode, IPC connection attempts, and failure paths.
+  - Fixed Windows named-pipe formatting for mpv IPC (`\\.\pipe\...`).
+- Implemented and iterated Windows embedding strategies.
+  - Added native-handle (`--wid`) embedding path and lifecycle sync hooks (attach/update/detach host).
+  - Added automatic fallback from failed embedded startup to external mode.
+  - Added pseudo-embedded overlay mode (borderless mpv window pinned to preview geometry) to avoid native addons while keeping timeline integration unchanged.
+  - Added owner-window move/resize tracking so overlay geometry follows preview placement.
+  - Tuned preview/overlay sizing and centering so the video surface appears larger and centered in preview workflow.
+- Updated playback info row and editor controls.
+  - Added volume slider that sends volume updates to mpv.
+  - Added comments and mode labels clarifying MVP/fallback behavior.
+- Deployment/ops updates completed during this cycle.
+  - Installed mpv and moved project runtime usage to Windows path strategy centered on `D:\project_tools\mpv`.
+  - Set user environment fallback for app startup (`AI_VIDEO_EDITOR_MPV_PATH`) and aligned PATH usage to project-controlled location.
+  - Verified desktop builds repeatedly after each major change path.
+
 ## 2026-04-09 — UI simplification and timeline UX updates
 
 - Simplified the main editor UI to remove project-management focused sections and keep the editing-first surface.

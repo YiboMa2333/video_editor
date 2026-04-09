@@ -5,6 +5,7 @@ interface MainEditorLayoutProps {
   mediaList: ReactNode;
   previewWindow: ReactNode;
   playbackInfo: ReactNode;
+  editorControls: ReactNode;
   timelineToolbar: ReactNode;
   timeline: ReactNode;
 }
@@ -13,6 +14,7 @@ export default function MainEditorLayout({
   mediaList,
   previewWindow,
   playbackInfo,
+  editorControls,
   timelineToolbar,
   timeline,
 }: MainEditorLayoutProps) {
@@ -24,6 +26,7 @@ export default function MainEditorLayout({
         <div className="editor-preview-stack">
           <div className="preview-window-region">{previewWindow}</div>
           <div className="playback-info-region">{playbackInfo}</div>
+          <div className="editor-controls-region">{editorControls}</div>
         </div>
 
         <div className="timeline-toolbar-region">{timelineToolbar}</div>
