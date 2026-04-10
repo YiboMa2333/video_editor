@@ -4,6 +4,18 @@ Canonical project history now lives in `D:\AI_video_editor_project\ChangeLog.md`
 
 This file is intentionally kept as a pointer so changelog updates stay in one place.
 
+## 2026-04-10 - AI editing Phase 1 UI and instruction lifecycle updates
+
+- Added Phase 1 AI editing UI entry and panel flow in desktop renderer:
+	- Added `AI Segment` action to timeline toolbar.
+	- Added AI period validation for selected range with a minimum duration requirement.
+	- Added AI editor modal components (`AIEditorPanel`, `AIPeriodInfo`, `AIProgressIndicator`).
+	- Added AI UI state store (`useAIStore`) for panel visibility, selected period, instruction text, and progress state.
+	- Mounted AI editor panel in app root so it is accessible from timeline controls.
+- Updated AI instruction input lifecycle:
+	- AI instruction textarea input is now cleared automatically when an AI run finishes.
+	- Instruction text is also cleared on AI run reset/error path to avoid stale prompt reuse.
+
 ## 2026-04-10 - Timeline drag reorder preview and seeker interaction updates
 
 - Updated timeline drag-to-move to use threshold-based reordering preview:

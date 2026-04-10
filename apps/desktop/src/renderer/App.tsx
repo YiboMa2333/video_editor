@@ -5,6 +5,7 @@ import MediaBin from "./components/MediaBin/MediaBin";
 import { PreviewWindow } from "./components/Preview/PreviewWindow";
 import Timeline from "./components/Timeline/Timeline";
 import { EditorToolbar } from "./components/Timeline/EditorToolbar";
+import { AIEditorPanel } from "./components/AI/AIEditorPanel";
 import { checkBackendHealth } from "./services/api";
 import "./App.css";
 
@@ -25,6 +26,7 @@ export default function App() {
         timelineToolbar={<EditorToolbar />}
         timeline={<Timeline />}
       />
+      <AIEditorPanel />
     </main>
   );
 }

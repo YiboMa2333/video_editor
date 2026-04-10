@@ -33,6 +33,10 @@
   font-size: 12px;
 }
 
+.timeline-toolbar-warning {
+  color: #f0c98a;
+}
+
 .timeline-toolbar-notice {
   color: #cfe6ff;
   font-size: 12px;

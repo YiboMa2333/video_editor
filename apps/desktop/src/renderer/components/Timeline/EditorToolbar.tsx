@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
 import { usePlayerStore } from "../../store/usePlayerStore";
+import { useAIStore } from "../../store/useAIStore";
 import "./TimelineToolbar.css";
 
 type ToolbarAction = {
@@ -11,6 +12,7 @@ type ToolbarAction = {
 };
 
 export function EditorToolbar() {
+  const MIN_AI_PERIOD_SEC = 10;
   const [rangeNotice, setRangeNotice] = useState<string | null>(null);
   const tracks = useProjectStore((state) => state.project.tracks);
   const selectedClipId = useProjectStore((state) => state.selectedClipId);
@@ -29,6 +31,7 @@ export function EditorToolbar() {
   const historyUndoDepth = useProjectStore((state) => state.historyUndoDepth);
   const historyRedoDepth = useProjectStore((state) => state.historyRedoDepth);
   const currentTimeSec = usePlayerStore((state) => state.currentTime);
+  const openAIPanel = useAIStore((state) => state.openPanel);
 
   const selectedClipLocation = useMemo(() => {
     if (!selectedClipId) {
@@ -59,6 +62,10 @@ export function EditorToolbar() {
     hasSelectedClip && selectedClipLocation.clipIndex < selectedClipLocation.clipCount - 1;
   const canUndo = historyUndoDepth > 0;
   const canRedo = historyRedoDepth > 0;
+  const selectedRangeDurationSec = hasValidRange
+    ? (selectedRangeEndSec ?? 0) - (selectedRangeStartSec ?? 0)
+    : 0;
+  const hasValidAIPeriod = hasValidRange && selectedRangeDurationSec >= MIN_AI_PERIOD_SEC;
 
   const formatTimelineTime = (timeSec: number | null): string => {
     if (typeof timeSec !== "number" || !Number.isFinite(timeSec)) {
@@ -94,6 +101,9 @@ export function EditorToolbar() {
   const rangeLabel = hasValidRange
     ? `Range ${selectedRangeStartSec?.toFixed(2)}s - ${selectedRangeEndSec?.toFixed(2)}s`
     : "No delete range selected";
+  const aiSelectionLabel = hasValidRange
+    ? `AI period: ${selectedRangeDurationSec.toFixed(2)}s`
+    : "Select a timeline period to enable AI Segment";
 
   const setInLabel =
     typeof selectedRangeStartSec === "number"
@@ -148,6 +158,22 @@ export function EditorToolbar() {
       onClick: deleteSelectedRange,
     },
     {
+      label: "AI Segment",
+      disabled: !hasValidAIPeriod,
+      hint: !hasValidRange
+        ? "Set In and Set Out to choose an AI period."
+        : !hasValidAIPeriod
+          ? `AI needs at least ${MIN_AI_PERIOD_SEC} seconds in the selected period.`
+          : "Open AI editor for the selected timeline period.",
+      onClick: () => {
+        if (!hasValidRange) {
+          return;
+        }
+
+        openAIPanel(selectedRangeStartSec ?? 0, selectedRangeEndSec ?? 0);
+      },
+    },
+    {
       label: "Move Left",
       disabled: !canMoveLeft,
       hint: canMoveLeft ? "Move the selected clip earlier in its track." : "The selected clip is already first or nothing is selected.",
@@ -179,6 +205,9 @@ export function EditorToolbar() {
         <span className="timeline-toolbar-label">Editing Toolbar</span>
         <strong>Arrange and refine clips</strong>
         <span className="timeline-toolbar-status">{rangeLabel}</span>
+        <span className={`timeline-toolbar-status ${hasValidAIPeriod ? "" : "timeline-toolbar-warning"}`}>
+          {aiSelectionLabel}
+        </span>
         {rangeNotice ? <span className="timeline-toolbar-notice">{rangeNotice}</span> : null}
       </div>
 
