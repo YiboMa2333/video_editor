@@ -1,7 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AIPeriodInfo } from "./AIPeriodInfo";
 import { AIProgressIndicator } from "./AIProgressIndicator";
 import { useAIStore } from "../../store/useAIStore";
+import { useProjectStore } from "../../store/useProjectStore";
+import { validateAIInstructions } from "../../services/aiInstructionValidator";
+import { executeAIInstructions } from "../../services/aiInstructionExecutor";
+import type { AIInstructionSet } from "../../types/aiInstructions";
 import "./AIEditorPanel.css";
 
 const MIN_AI_PERIOD_SEC = 10;
@@ -25,6 +29,11 @@ export function AIEditorPanel() {
   const finishRun = useAIStore((state) => state.finishRun);
   const resetRun = useAIStore((state) => state.resetRun);
 
+  const project = useProjectStore((state) => state.project);
+  const applyAIEdit = useProjectStore((state) => state.applyAIEdit);
+
+  const [lastError, setLastError] = useState<string | null>(null);
+
   const periodDurationSec = useMemo(() => {
     if (
       typeof selectedPeriodStart !== "number" ||
@@ -41,24 +50,65 @@ export function AIEditorPanel() {
   const meetsMinPeriod = periodDurationSec >= MIN_AI_PERIOD_SEC;
   const canStart = hasValidPeriod && meetsMinPeriod && instructionText.trim().length > 0 && !isAIRunning;
 
-  const runDemoAI = async () => {
+  const runAIExecution = async () => {
     const started = startRun();
     if (!started) {
       return;
     }
 
+    setLastError(null);
+
     try {
+      // Stage 1: Parse JSON
       updateProgress(10, "preparing");
-      await sleep(350);
-      updateProgress(35, "reading thumbnails");
-      await sleep(500);
-      updateProgress(65, "matching instructions");
-      await sleep(650);
+      await sleep(100);
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(instructionText);
+      } catch {
+        setLastError("Invalid JSON. Please paste valid AI instruction JSON.");
+        resetRun();
+        return;
+      }
+
+      // Stage 2: Validate
+      updateProgress(30, "validating instructions");
+      await sleep(100);
+
+      const validation = validateAIInstructions(parsed);
+      if (!validation.valid) {
+        setLastError(validation.errors.join("\n"));
+        resetRun();
+        return;
+      }
+
+      const instructions = parsed as AIInstructionSet;
+
+      // Stage 3: Execute
+      updateProgress(60, "applying edits");
+      await sleep(100);
+
+      const result = executeAIInstructions(project, instructions);
+
+      if (result.errors.length > 0 && result.appliedCount === 0) {
+        setLastError(result.errors.join("\n"));
+        resetRun();
+        return;
+      }
+
+      // Stage 4: Apply as one grouped undo entry
       updateProgress(90, "applying edits");
-      await sleep(500);
+      applyAIEdit(() => result.project);
+
+      if (result.errors.length > 0) {
+        setLastError(`Applied ${result.appliedCount} action(s) with warnings:\n${result.errors.join("\n")}`);
+      }
+
       finishRun();
     } catch {
       resetRun();
+      setLastError("Unexpected error during AI execution.");
     }
   };
 
@@ -86,13 +136,13 @@ export function AIEditorPanel() {
         />
 
         <label className="ai-editor-field" htmlFor="ai-instructions">
-          <span>Instructions</span>
+          <span>Instructions (paste JSON)</span>
           <textarea
             id="ai-instructions"
-            placeholder="Example: remove pauses and keep energetic moments"
+            placeholder='{"version":1,"actions":[{"type":"deleteRange","start":0,"end":12}]}'
             value={instructionText}
             disabled={isAIRunning}
-            onChange={(event) => setInstructionText(event.target.value)}
+            onChange={(event) => { setInstructionText(event.target.value); setLastError(null); }}
           />
         </label>
 
@@ -100,6 +150,10 @@ export function AIEditorPanel() {
           <p className="ai-editor-warning">
             Selected period must be at least {MIN_AI_PERIOD_SEC} seconds before AI can start.
           </p>
+        ) : null}
+
+        {lastError ? (
+          <pre className="ai-editor-error">{lastError}</pre>
         ) : null}
 
         <AIProgressIndicator
@@ -120,7 +174,7 @@ export function AIEditorPanel() {
           <button
             type="button"
             className="ai-editor-start"
-            onClick={() => void runDemoAI()}
+            onClick={() => void runAIExecution()}
             disabled={!canStart}
           >
             {isAIRunning ? "Running..." : "Start"}

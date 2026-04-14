@@ -68,6 +68,20 @@
   font-size: 13px;
 }
 
+.ai-editor-error {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(200, 60, 60, 0.15);
+  border: 1px solid rgba(220, 80, 80, 0.35);
+  color: #f0a0a0;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
 .ai-editor-actions {
   display: flex;
   justify-content: flex-end;

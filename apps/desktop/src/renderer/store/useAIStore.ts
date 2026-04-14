@@ -3,6 +3,7 @@ import { create } from "zustand";
 export type AIProgressStage =
   | "preparing"
   | "reading thumbnails"
+  | "validating instructions"
   | "matching instructions"
   | "applying edits"
   | "done"

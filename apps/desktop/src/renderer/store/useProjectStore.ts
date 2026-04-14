@@ -48,6 +48,7 @@ interface ProjectState {
   moveSelectedClipRight: () => void;
   moveClipToTime: (trackId: string, clipId: string, newStartSec: number) => void;
   reorderClipInTrack: (trackId: string, clipId: string, targetIndex: number) => void;
+  applyAIEdit: (updater: (project: Project) => Project) => void;
   undo: () => void;
   redo: () => void;
   renameProject: (name: string) => void;
@@ -981,6 +982,24 @@ export const useProjectStore = create<ProjectState>()(
             ...pushProjectHistory(state),
             selectedClipId: clipId,
             selectedTrackId: trackId,
+            selectedRangeStartSec: null,
+            selectedRangeEndSec: null,
+            undoStackDepth: nextUndoDepth(state.undoStackDepth),
+          };
+        }),
+
+      applyAIEdit: (updater) =>
+        set((state) => {
+          const updated = updater(state.project);
+          if (updated === state.project) {
+            return state;
+          }
+
+          return {
+            ...updateActiveProject(state, () => updated),
+            ...pushProjectHistory(state),
+            selectedClipId: null,
+            selectedTrackId: null,
             selectedRangeStartSec: null,
             selectedRangeEndSec: null,
             undoStackDepth: nextUndoDepth(state.undoStackDepth),
